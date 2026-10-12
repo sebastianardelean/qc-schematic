@@ -45,7 +45,7 @@
       (.add classes "drag-active")
       (.remove classes "drag-active"))))
 
-(declare remove-gate! render-gates! render-code!)
+(declare remove-gate! render-gates! render-code! build-wires!)
 
 (def drag-type (atom nil))
 
@@ -273,7 +273,106 @@
 
 (defn render-code! []
   (let [node (js/document.getElementById "qasm")]
-    (set! (.-textContent node) (generate-qasm @state))))
+    (if (= "TEXTAREA" (.-tagName node))
+      (set! (.-value node) (generate-qasm @state))
+      (set! (.-textContent node) (generate-qasm @state)))))
+
+(def qasm-name->type
+  (into {} (map (fn [[type config]] [(:qasm config) type]) gate-types)))
+
+(defn header-line? [line]
+  (or (string/starts-with? line "OPENQASM")
+      (string/starts-with? line "include")))
+
+(def qasm-qubit-re #"^\s*qubit\s*\[\s*(\d+)\s*\]\s*[A-Za-z_][A-Za-z0-9_]*\s*;?\s*$")
+
+(def qasm-gate-re
+  #"^\s*([A-Za-z][A-Za-z0-9_]*)\s*(?:\(\s*([^)]*)\s*\))?\s*[A-Za-z_][A-Za-z0-9_]*\s*\[\s*(\d+)\s*\]\s*(?:,\s*[A-Za-z_][A-Za-z0-9_]*\s*\[\s*(\d+)\s*\])?\s*;?\s*$")
+
+(defn assign-col [nextcol affected]
+  (let [col (apply max 0 (map #(get nextcol % 0) affected))]
+    [col (reduce (fn [m w] (assoc m w (inc col))) nextcol affected)]))
+
+(defn parse-qasm [text]
+  (loop [lines (string/split-lines text)
+         qubits nil
+         nextcol {}
+         id 0
+         gates []]
+    (if (empty? lines)
+      (if (and qubits (<= min-qubits qubits max-qubits))
+        {:ok true :qubits qubits :gates gates}
+        {:ok false})
+      (let [raw (first lines)
+            idx (string/index-of raw "//")
+            line (string/trim (if idx (subs raw 0 idx) raw))]
+        (cond
+          (or (empty? line) (header-line? line))
+          (recur (rest lines) qubits nextcol id gates)
+
+          (re-matches qasm-qubit-re line)
+          (let [[_ n] (re-matches qasm-qubit-re line)]
+            (recur (rest lines) (js/parseInt n 10) nextcol id gates))
+
+          :else
+          (let [[_ name arg i1 i2] (re-matches qasm-gate-re line)
+                type (get qasm-name->type name)]
+            (if (and type qubits)
+              (let [wire (js/parseInt i1 10)
+                    target (when i2 (js/parseInt i2 10))]
+                (cond
+                  (= type :cx)
+                  (if (and target (not= target wire)
+                           (<= 0 wire (dec qubits)) (<= 0 target (dec qubits)))
+                    (let [candidate {:type type :wire wire :target target :angle nil}
+                          [col nextcol'] (assign-col nextcol (affected-wires candidate))]
+                      (recur (rest lines) qubits nextcol' (inc id)
+                             (conj gates (assoc candidate :col col :id id))))
+                    {:ok false})
+
+                  (some? i2) {:ok false}
+
+                  (<= 0 wire (dec qubits))
+                  (let [angle (when (and arg (not (string/blank? arg))) (string/trim arg))
+                        candidate {:type type :wire wire :target nil :angle angle}
+                        [col nextcol'] (assign-col nextcol (affected-wires candidate))]
+                    (recur (rest lines) qubits nextcol' (inc id)
+                           (conj gates (assoc candidate :col col :id id))))
+
+                  :else {:ok false}))
+              {:ok false})))))))
+
+(defn sync-qubits-input! []
+  (when-let [input (js/document.getElementById "qubits")]
+    (set! (.-value input) (str (:qubits @state)))))
+
+(defn apply-qasm! [text]
+  (let [parsed (parse-qasm text)]
+    (when (:ok parsed)
+      (swap! state assoc
+             :qubits (:qubits parsed)
+             :next-id (count (:gates parsed))
+             :gates (:gates parsed))
+      (build-wires!)
+      (sync-qubits-input!)
+      (render-gates!))))
+
+(def parse-timer (atom nil))
+
+(defn schedule-parse! []
+  (when @parse-timer (js/clearTimeout @parse-timer))
+  (reset! parse-timer
+          (js/setTimeout
+           (fn []
+             (when-let [node (js/document.getElementById "qasm")]
+               (apply-qasm! (.-value node))))
+           250)))
+
+(defn current-qasm []
+  (let [node (js/document.getElementById "qasm")]
+    (if (and node (= "TEXTAREA" (.-tagName node)))
+      (.-value node)
+      (generate-qasm @state))))
 
 (defn add-gate! [gate]
   (swap! state
@@ -410,16 +509,26 @@
                          :class "gate-preview hidden"})))
 
 (defn code-panel []
-  (create-el :aside
-             {:id "code-panel"}
-             (create-el :div
-                        {:class "panel-section code-header"}
-                        (create-el :h2 {} "OpenQASM 3"))
-             (create-el :pre {:id "qasm"})))
+  (let [editor (create-el :textarea
+                          {:id "qasm"
+                           :spellcheck "false"
+                           :autocapitalize "off"
+                           :autocomplete "off"
+                           :autocorrect "off"
+                           :wrap "off"})]
+    (.addEventListener editor "input" (fn [_] (schedule-parse!)))
+    (.addEventListener editor "blur" (fn [_] (apply-qasm! (.-value editor))))
+    (create-el :aside
+               {:id "code-panel"}
+               (create-el :div
+                          {:class "panel-section code-header"}
+                          (create-el :h2 {} "OpenQASM 3")
+                          (create-el :span {:class "code-hint"} "editable"))
+               editor)))
 
 (defn setup-export! []
   (when-let [api (.-electronAPI js/window)]
-    (.onMenuExport api (fn [] (.exportQasm api (generate-qasm @state))))))
+    (.onMenuExport api (fn [] (.exportQasm api (current-qasm))))))
 
 (defn init []
   (let [root (js/document.getElementById "app")]

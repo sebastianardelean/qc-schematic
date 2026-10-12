@@ -110,6 +110,17 @@ body {
 
 .code-header {
   padding-bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.code-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: #8a94a0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 #qasm {
@@ -121,7 +132,14 @@ body {
   font-size: 13px;
   line-height: 1.55;
   white-space: pre;
+  tab-size: 4;
   color: #1f2933;
+  border: none;
+  outline: none;
+  background: transparent;
+  resize: none;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #wires-layer,
