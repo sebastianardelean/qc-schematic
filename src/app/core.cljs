@@ -6,9 +6,19 @@
    :y {:qasm "y" :src "static/y.svg"}
    :z {:qasm "z" :src "static/z.svg"}
    :h {:qasm "h" :src "static/hadamard.svg"}
+   :s {:qasm "s" :src "static/s.svg"}
+   :t {:qasm "t" :src "static/t.svg"}
+   :sdg {:qasm "sdg" :src "static/sdg.svg"}
+   :tdg {:qasm "tdg" :src "static/tdg.svg"}
+   :rx {:qasm "rx" :src "static/rx.svg" :angle "pi/2"}
+   :ry {:qasm "ry" :src "static/ry.svg" :angle "pi/2"}
+   :rz {:qasm "rz" :src "static/rz.svg" :angle "pi/2"}
+   :p {:qasm "p" :src "static/phase.svg" :angle "pi/2"}
+   :id {:qasm "id" :src "static/identity.svg"}
    :cx {:qasm "cx" :src "static/cx.svg"}})
 
-(def palette-types [:h :x :y :z :cx])
+(def palette-types
+  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx])
 
 (defn gate-src [type]
   (get-in gate-types [type :src] "static/hadamard.svg"))
@@ -112,7 +122,8 @@
   (let [{:keys [qubits gates]} @state
         wire (snap-wire y qubits)
         target (when (= type :cx) (cx-target wire qubits))
-        candidate {:type type :wire wire :target target}
+        candidate {:type type :wire wire :target target
+                   :angle (get-in gate-types [type :angle])}
         col (nearest-free-col gates (snap-col x) (affected-wires candidate))]
     (assoc candidate :col col)))
 
@@ -245,10 +256,12 @@
     (doseq [gate (:gates @state)]
       (.appendChild layer (gate-node gate)))))
 
-(defn gate-qasm [{:keys [type wire target]}]
+(defn gate-qasm [{:keys [type wire target angle]}]
   (if (= type :cx)
     (str "cx q[" wire "], q[" target "];")
-    (str (get-in gate-types [type :qasm] "id") " q[" wire "];")))
+    (let [name (get-in gate-types [type :qasm] "id")
+          angle (or angle (get-in gate-types [type :angle]))]
+      (str name (when angle (str "(" angle ")")) " q[" wire "];"))))
 
 (defn generate-qasm [{:keys [qubits gates]}]
   (let [header ["OPENQASM 3;"
@@ -262,16 +275,12 @@
   (let [node (js/document.getElementById "qasm")]
     (set! (.-textContent node) (generate-qasm @state))))
 
-(defn add-gate! [{:keys [type wire col target]}]
+(defn add-gate! [gate]
   (swap! state
          (fn [current]
            (-> current
                (update :next-id inc)
-               (update :gates conj {:id (:next-id current)
-                                    :type type
-                                    :wire wire
-                                    :col col
-                                    :target target}))))
+               (update :gates conj (assoc gate :id (:next-id current))))))
   (render-gates!)
   (render-code!))
 
