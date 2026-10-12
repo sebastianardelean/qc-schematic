@@ -10,3 +10,5 @@ Implement only the items that are not strikethrough:
 6. Add the option to import OpenQASM 3 code and draw the items on the canvas.
 7. Add the option to export the circuit as SVG.
 8. Split the implementation in multiple Clojure script files. There should be specific files that handles UI, that handle OpenQASM 3 parsing, Export, Save etc.
+9. Create unit tests with a target of over 50% code coverage. Try to reach 100 % code coverage if possible.
+10. Add handles to Edit menu. All submenus shall work in the Editor.
