@@ -114,7 +114,7 @@
           col))))
 
 (defn cx-target [control qubits]
-  (if (< control (dec (dec qubits)))
+  (if (< control (dec qubits))
     (inc control)
     (dec control)))
 
