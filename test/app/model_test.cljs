@@ -99,6 +99,19 @@
     (let [gates [{:type :x :wire 2 :col 0}]]
       (is (= 1 (model/nearest-free-wire gates 0 2 0 4))))))
 
+(deftest canvas-size-test
+  (let [{:keys [width height]} (model/canvas-size {:qubits 4 :gates []})]
+    (is (= model/min-canvas-width width))
+    (is (= (+ model/top-pad (* 4 model/wire-gap) model/bottom-pad) height)))
+  (testing "grows with more columns"
+    (let [base (:width (model/canvas-size {:qubits 1 :gates []}))
+          wide (:width (model/canvas-size {:qubits 1
+                                          :gates (map #(hash-map :col % :wire 0) (range 12))}))]
+      (is (> wide base))))
+  (testing "grows with more qubits"
+    (is (< (:height (model/canvas-size {:qubits 1 :gates []}))
+           (:height (model/canvas-size {:qubits 8 :gates []}))))))
+
 (deftest state-helpers-test
   (let [st (model/add-gate-to-state model/initial-state {:type :x :wire 0 :col 0})]
     (is (= 1 (:next-id st)))

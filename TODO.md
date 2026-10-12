@@ -12,4 +12,4 @@ Implement only the items that are not strikethrough:
 8. ~~Split the implementation in multiple Clojure script files. There should be specific files that handles UI, that handle OpenQASM 3 parsing, Export, Save etc.~~
 9. ~~Create unit tests with a target of over 50% code coverage. Try to reach 100 % code coverage if possible.~~
 10. ~~Add handles to Edit menu. All submenus shall work in the Editor.~~
-11. Implement horizontal and vertical scroll in canvas
+11. ~~Implement horizontal and vertical scroll in canvas.~~

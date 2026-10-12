@@ -31,6 +31,10 @@
 (def zero-center 35)
 (def origin-x 100)
 (def gate-size 46)
+(def bottom-pad 60)
+(def right-pad 60)
+(def min-cols 4)
+(def min-canvas-width 480)
 
 (def initial-state {:qubits 4 :next-id 0 :gates [] :defs {}})
 
@@ -47,6 +51,12 @@
 
 (defn gate-top [wire]
   (- (wire-y wire) (/ gate-size 2)))
+
+(defn canvas-size [{:keys [qubits gates]}]
+  (let [max-col (apply max 0 (map :col gates))
+        cols (max min-cols (inc max-col))]
+    {:width (max (+ origin-x (* cols col-gap) right-pad) min-canvas-width)
+     :height (+ top-pad (* qubits wire-gap) bottom-pad)}))
 
 (defn snap-wire [y qubits]
   (int (-> (/ (- y top-pad) wire-gap) Math/round (max 0) (min (dec qubits)))))

@@ -34,6 +34,16 @@
     (aset dt "effectAllowed" "")
     dt))
 
+(deftest canvas-layout-test
+  (ui/init)
+  (let [wires (el "wires-layer")]
+    (is (= "480px" (.-width (.-style wires))))
+    (is (= "470px" (.-height (.-style wires)))))
+  (testing "layers grow when gates extend the content"
+    (ui/add-gate! {:type :h :wire 0 :col 20})
+    (is (> (js/parseInt (.-width (.-style (el "gates-layer"))) 10) 480))
+    (is (> (js/parseInt (.-width (.-style (el "wires-layer"))) 10) 480))))
+
 (deftest init-builds-ui-test
   (ui/init)
   (is (some? (el "operations")))

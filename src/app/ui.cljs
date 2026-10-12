@@ -150,11 +150,20 @@
   (render-gates!)
   (render-code!))
 
+(defn layout-canvas! []
+  (let [{:keys [width height]} (model/canvas-size @model/state)]
+    (doseq [id ["wires-layer" "gates-layer"]]
+      (when-let [layer (js/document.getElementById id)]
+        (let [style (.-style layer)]
+          (set! (.-width style) (str width "px"))
+          (set! (.-height style) (str height "px")))))))
+
 (defn render-gates! []
   (let [layer (js/document.getElementById "gates-layer")]
     (set! (.-innerHTML layer) "")
     (doseq [gate (:gates @model/state)]
-      (.appendChild layer (gate-node gate)))))
+      (.appendChild layer (gate-node gate)))
+    (layout-canvas!)))
 
 (defn render-code! []
   (let [node (js/document.getElementById "qasm")]
@@ -234,9 +243,7 @@
 
 (defn build-wires! []
   (let [{:keys [qubits]} @model/state
-        layer (js/document.getElementById "wires-layer")
-        layer-style (.-style layer)]
-    (set! (.-height layer-style) (str (+ model/top-pad (* qubits model/wire-gap)) "px"))
+        layer (js/document.getElementById "wires-layer")]
     (set! (.-innerHTML layer) "")
     (doseq [wire (range qubits)]
       (.appendChild layer
@@ -250,7 +257,8 @@
                                 :width model/gate-size
                                 :height model/gate-size
                                 :style (str "left:" (- model/zero-center (/ model/gate-size 2)) "px;"
-                                            "top:" (model/gate-top wire) "px;")})))))
+                                            "top:" (model/gate-top wire) "px;")})))
+    (layout-canvas!)))
 
 (defn set-qubits! [raw]
   (when (and (number? raw) (not (js/isNaN raw)))
