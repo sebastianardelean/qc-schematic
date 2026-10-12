@@ -1,4 +1,4 @@
-{:source-paths ["src"]
+{:source-paths ["src" "test"]
 
  :builds
  {:app
@@ -7,4 +7,10 @@
    :asset-path "js"
    :modules
    {:main
-    {:entries [app.core]}}}}}
+    {:entries [app.core]}}}
+
+  :test
+  {:target :node-test
+   :output-to "out/node-test.js"
+   :ns-regexp "-test$"
+   :compiler-options {:source-map true}}}}

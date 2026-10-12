@@ -3,8 +3,15 @@ node_modules/
 
 # Shadow CLJS build output and caches
 public/js/
+out/
 .shadow-cljs/
 .cpcache/
+
+# Test coverage output
+coverage/
+.c8tmp/
+.c8report.txt
+.c8app.txt
 
 # REPL / tooling ports
 .nrepl-port
