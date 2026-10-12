@@ -33,11 +33,41 @@ function buildMenu() {
             if (target) target.webContents.send("menu-export-qasm");
           }
         },
+        {
+          label: "Import OpenQASM…",
+          accelerator: "CmdOrCtrl+O",
+          click: (_item, win) => {
+            const target = win || mainWindow;
+            if (target) target.webContents.send("menu-import-qasm");
+          }
+        },
+        {
+          label: "Export SVG…",
+          accelerator: "CmdOrCtrl+Shift+E",
+          click: (_item, win) => {
+            const target = win || mainWindow;
+            if (target) target.webContents.send("menu-export-svg");
+          }
+        },
         { type: "separator" },
         isMac ? { role: "close" } : { role: "quit" }
       ]
     },
-    { role: "editMenu" },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { type: "separator" },
+        { role: "selectAll" }
+      ]
+    },
     { role: "viewMenu" },
     { role: "windowMenu" }
   ];
@@ -60,6 +90,44 @@ app.whenReady().then(() => {
     if (canceled || !filePath) return { saved: false };
     try {
       fs.writeFileSync(filePath, String(code ?? ""), "utf8");
+      return { saved: true, filePath };
+    } catch (error) {
+      return { saved: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle("import-qasm", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: "Import OpenQASM",
+      properties: ["openFile"],
+      filters: [
+        { name: "OpenQASM", extensions: ["qasm", "qasm3", "inc"] },
+        { name: "All Files", extensions: ["*"] }
+      ]
+    });
+    if (canceled || !filePaths || !filePaths.length) return { ok: false };
+    try {
+      const content = fs.readFileSync(filePaths[0], "utf8");
+      return { ok: true, content, filePath: filePaths[0] };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle("export-svg", async (event, svg) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: "Export SVG",
+      defaultPath: "circuit.svg",
+      filters: [
+        { name: "SVG", extensions: ["svg"] },
+        { name: "All Files", extensions: ["*"] }
+      ]
+    });
+    if (canceled || !filePath) return { saved: false };
+    try {
+      fs.writeFileSync(filePath, String(svg ?? ""), "utf8");
       return { saved: true, filePath };
     } catch (error) {
       return { saved: false, error: String(error) };

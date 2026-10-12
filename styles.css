@@ -172,6 +172,26 @@ body {
   cursor: pointer;
 }
 
+.gate-custom {
+  background: #ffffff;
+  border: 1px solid #3a4a5b;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.gate-custom .custom-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 12px system-ui, sans-serif;
+  color: #1f2933;
+  text-align: center;
+  padding: 2px;
+  overflow: hidden;
+}
+
 .gate-img,
 .cx-part {
   position: absolute;
