@@ -1,0 +1,184 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #1f2933;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#operations {
+  flex: none;
+  width: 200px;
+  background: #f7f8fa;
+  border-right: 1px solid #d7dbe0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-section {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.palette-section {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.qubits-section {
+  flex: none;
+  border-top: 1px solid #d7dbe0;
+}
+
+#operations h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64707d;
+}
+
+#operations label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64707d;
+}
+
+#qubits {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+  background: #ffffff;
+  border: 1px solid #cfd5dc;
+  border-radius: 6px;
+}
+
+#qubits:focus {
+  outline: 2px solid #678efa;
+  outline-offset: 1px;
+  border-color: #678efa;
+}
+
+#palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.palette-gate {
+  cursor: grab;
+  user-select: none;
+}
+
+.palette-gate:active {
+  cursor: grabbing;
+}
+
+#canvas {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  background: #ffffff;
+}
+
+#code-panel {
+  flex: none;
+  width: 320px;
+  background: #f7f8fa;
+  border-left: 1px solid #d7dbe0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.code-header {
+  padding-bottom: 10px;
+}
+
+#qasm {
+  flex: 1;
+  margin: 0;
+  padding: 0 16px 16px;
+  overflow: auto;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  color: #1f2933;
+}
+
+#wires-layer,
+#gates-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.wire {
+  position: absolute;
+  height: 40px;
+  background-image: url("static/gray-line.svg");
+  background-repeat: repeat-x;
+  background-position: left center;
+  background-size: 40px 40px;
+}
+
+.zero-state,
+.gate-preview {
+  position: absolute;
+  pointer-events: none;
+}
+
+.gate {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.gate-img,
+.cx-part {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.cx-line {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: #678efa;
+}
+
+#app.drag-active .gate {
+  pointer-events: none;
+  cursor: default;
+}
+
+.gate-preview {
+  opacity: 0.3;
+}
+
+.hidden {
+  display: none;
+}

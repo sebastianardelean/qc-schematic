@@ -1,0 +1,20 @@
+{
+    "name": "qc-schematic",
+    "version": "1.0.0",
+    "description": "",
+    "private": true,
+    "main": "main.cjs",
+    "scripts": {
+        "start": "electron .",
+        "build:cljs": "shadow-cljs release app",
+        "watch:cljs": "shadow-cljs watch app"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "devDependencies": {
+        "electron": "^44.7.0",
+        "shadow-cljs": "^3.5.5"
+    }
+}
