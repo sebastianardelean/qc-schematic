@@ -39,6 +39,8 @@
 
 (def drag-type (atom nil))
 
+(def target-drag (atom nil))
+
 (defn create-el [tag props & children]
   (let [node (js/document.createElement (name tag))
         style (.-style node)]
@@ -70,23 +72,35 @@
 (defn snap-col [x]
   (int (max 0 (Math/round (/ (- x origin-x) col-gap)))))
 
-(defn gate-covers? [gate wire col]
+(defn blocks-cell? [gate wire col]
   (and (= (:col gate) col)
        (or (= (:wire gate) wire)
-           (= (:target gate) wire))))
+           (= (:target gate) wire)
+           (and (= (:type gate) :cx)
+                (< (min (:wire gate) (:target gate))
+                   wire
+                   (max (:wire gate) (:target gate)))))))
 
-(defn occupied? [gates wire col]
-  (boolean (some #(gate-covers? % wire col) gates)))
+(defn blocked? [gates wire col]
+  (boolean (some #(blocks-cell? % wire col) gates)))
+
+(defn affected-wires [{:keys [type wire target]}]
+  (if (= type :cx)
+    (range (min wire target) (inc (max wire target)))
+    [wire]))
 
 (defn free-col?
   [gates col wires]
-  (every? #(not (occupied? gates % col)) wires))
+  (every? #(not (blocked? gates % col)) wires))
+
+(defn free-wire-span? [gates col control wire]
+  (every? #(not (blocked? gates % col)) (range (min control wire) (inc (max control wire)))))
 
 (defn nearest-free-col [gates col wires]
   (if (free-col? gates col wires)
     col
     (let [candidates (mapcat (fn [d] [(+ col d) (- col d)]) (range 1 64))]
-      (or (first (filter #(free-col? gates % wires) candidates))
+      (or (first (filter #(and (>= % 0) (free-col? gates % wires)) candidates))
           col))))
 
 (defn cx-target [control qubits]
@@ -98,33 +112,94 @@
   (let [{:keys [qubits gates]} @state
         wire (snap-wire y qubits)
         target (when (= type :cx) (cx-target wire qubits))
-        wires (if target [wire target] [wire])
-        col (nearest-free-col gates (snap-col x) wires)]
-    {:type type :wire wire :col col :target target}))
+        candidate {:type type :wire wire :target target}
+        col (nearest-free-col gates (snap-col x) (affected-wires candidate))]
+    (assoc candidate :col col)))
 
 (defn local-xy [event node]
   (let [rect (.getBoundingClientRect node)]
     [(- (.-clientX event) (.-left rect) (.-scrollLeft node))
      (- (.-clientY event) (.-top rect) (.-scrollTop node))]))
 
+(defn cx-geometry [control target]
+  (let [above (min control target)
+        below (max control target)]
+    {:above above
+     :below below
+     :span (- (wire-y below) (wire-y above))
+     :control-at-top? (< control target)}))
+
+(defn apply-cx-layout! [container control target]
+  (let [{:keys [above span control-at-top?]} (cx-geometry control target)
+        style (.-style container)
+        control-part (.. container (querySelector ".cx-control"))
+        target-part (.. container (querySelector ".cx-target"))
+        line (.. container (querySelector ".cx-line"))]
+    (set! (.-top style) (str (- (wire-y above) (/ gate-size 2)) "px"))
+    (set! (.-height style) (str (+ span gate-size) "px"))
+    (set! (.-top (.-style control-part)) (str (if control-at-top? 0 span) "px"))
+    (set! (.-top (.-style target-part)) (str (if control-at-top? span 0) "px"))
+    (set! (.-height (.-style line)) (str span "px"))))
+
+(defn nearest-free-wire [gates col desired control qubits]
+  (if (and (not= desired control) (free-wire-span? gates col control desired))
+    desired
+    (let [candidates (mapcat (fn [d] [(+ desired d) (- desired d)]) (range 1 qubits))]
+      (or (first (filter #(and (>= % 0)
+                               (< % qubits)
+                               (not= % control)
+                               (free-wire-span? gates col control %))
+                         candidates))
+          desired))))
+
+(defn start-target-drag! [event {:keys [id wire target]}]
+  (when-not @drag-type
+    (.preventDefault event)
+    (let [part (.-target event)]
+      (try
+        (.setPointerCapture part (.-pointerId event))
+        (catch js/Error _))
+      (reset! target-drag {:id id :control wire :wire target}))))
+
+(defn target-drag-move [event]
+  (when-let [{:keys [control] :as drag} @target-drag]
+    (let [[_ y] (local-xy event (js/document.getElementById "canvas"))
+          qubits (:qubits @state)
+          wire (snap-wire y qubits)]
+      (when (and (not= wire control) (<= 0 wire (dec qubits)))
+        (.preventDefault event)
+        (reset! target-drag (assoc drag :wire wire))
+        (apply-cx-layout! (.-parentElement (.-currentTarget event)) control wire)))))
+
+(defn target-drag-up [event]
+  (when-let [{:keys [id control wire]} @target-drag]
+    (reset! target-drag nil)
+    (when (and wire (not= wire control))
+      (let [{:keys [qubits gates]} @state
+            gate (first (filter #(= (:id %) id) gates))
+            target (nearest-free-wire gates (:col gate) wire control qubits)
+            target (if (= target control) (:target gate) target)]
+        (swap! state update :gates
+               (fn [gs] (mapv #(if (= (:id %) id) (assoc % :target target) %) gs)))
+        (render-gates!)
+        (render-code!)))))
+
 (defn gate-shape [{:keys [type wire target]}]
   (if (= type :cx)
-    (let [above (min wire target)
-          below (max wire target)
-          control-at-top? (= wire above)
-          span (- (wire-y below) (wire-y above))
+    (let [{:keys [span control-at-top?]} (cx-geometry wire target)
           line (create-el :div
                           {:class "cx-line"
                            :style (str "top:" (/ gate-size 2) "px;height:" span "px;")})
           control (create-el :img
-                             {:class "cx-part"
+                             {:class "cx-part cx-control"
                               :src "static/control.svg"
                               :width gate-size
                               :height gate-size
                               :style (str "top:" (if control-at-top? 0 span) "px;")})
           target (create-el :img
-                            {:class "cx-part"
+                            {:class "cx-part cx-target"
                              :src "static/target.svg"
+                             :title "Drag to move target"
                              :width gate-size
                              :height gate-size
                              :style (str "top:" (if control-at-top? span 0) "px;")})]
@@ -137,21 +212,25 @@
 
 (defn outer-style [{:keys [type wire target col]}]
   (if (= type :cx)
-    (let [above (min wire target)
-          below (max wire target)
-          top-y (wire-y above)]
-      (str "left:" (gate-left col) "px;top:" (- top-y (/ gate-size 2)) "px;"
-           "width:" gate-size "px;height:" (+ (- (wire-y below) top-y) gate-size) "px;"))
+    (let [{:keys [above span]} (cx-geometry wire target)]
+      (str "left:" (gate-left col) "px;top:" (- (wire-y above) (/ gate-size 2)) "px;"
+           "width:" gate-size "px;height:" (+ span gate-size) "px;"))
     (str "left:" (gate-left col) "px;top:" (gate-top wire) "px;"
          "width:" gate-size "px;height:" gate-size "px;")))
 
-(defn gate-node [{:keys [id] :as gate}]
+(defn gate-node [{:keys [id type] :as gate}]
   (let [node (create-el :div
                         {:class "gate"
                          :title "Double-click to remove"
                          :style (outer-style gate)})]
     (doseq [part (gate-shape gate)]
       (.appendChild node part))
+    (when (= type :cx)
+      (let [target-part (.. node (querySelector ".cx-target"))]
+        (.addEventListener target-part "pointerdown" (fn [event] (start-target-drag! event gate)))
+        (.addEventListener target-part "pointermove" target-drag-move)
+        (.addEventListener target-part "pointerup" target-drag-up)
+        (.addEventListener target-part "pointercancel" target-drag-up)))
     (.addEventListener node "dblclick" (fn [_] (remove-gate! id)))
     node))
 
@@ -227,6 +306,7 @@
           [x y] (local-xy event (.-currentTarget event))]
       (add-gate! (target-cell type x y))))
   (hide-preview!)
+  (reset! drag-type nil)
   (set-drag-active! false))
 
 (defn build-wires! []

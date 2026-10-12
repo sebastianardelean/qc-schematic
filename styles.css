@@ -162,6 +162,15 @@ body {
   pointer-events: none;
 }
 
+.cx-target {
+  pointer-events: auto;
+  cursor: ns-resize;
+}
+
+#app.drag-active .cx-target {
+  pointer-events: none;
+}
+
 .cx-line {
   position: absolute;
   left: 50%;
