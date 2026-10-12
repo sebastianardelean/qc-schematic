@@ -417,6 +417,10 @@
                         (create-el :h2 {} "OpenQASM 3"))
              (create-el :pre {:id "qasm"})))
 
+(defn setup-export! []
+  (when-let [api (.-electronAPI js/window)]
+    (.onMenuExport api (fn [] (.exportQasm api (generate-qasm @state))))))
+
 (defn init []
   (let [root (js/document.getElementById "app")]
     (.appendChild root (operations-panel))
@@ -428,6 +432,7 @@
     (.addEventListener canvas "dragleave" (fn [_] (hide-preview!)))
     (.addEventListener canvas "drop" handle-drop))
   (render-gates!)
-  (render-code!))
+  (render-code!)
+  (setup-export!))
 
 (init)
