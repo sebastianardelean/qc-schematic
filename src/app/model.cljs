@@ -14,16 +14,19 @@
    :rz {:qasm "rz" :src "static/rz.svg" :angle "pi/2"}
    :p {:qasm "p" :src "static/phase.svg" :angle "pi/2"}
    :id {:qasm "id" :src "static/identity.svg"}
-   :cx {:qasm "cx" :src "static/cx.svg"}})
+   :cx {:qasm "cx" :src "static/cx.svg"}
+   :measure {:qasm "measure" :src "static/measure.svg"}})
 
 (def palette-types
-  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx])
+  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx :measure])
 
 (defn gate-src [type]
   (get-in gate-types [type :src] "static/hadamard.svg"))
 
 (def min-qubits 1)
 (def max-qubits 12)
+(def min-cbits 0)
+(def max-cbits 12)
 (def wire-gap 90)
 (def col-gap 70)
 (def top-pad 50)
@@ -36,12 +39,15 @@
 (def min-cols 4)
 (def min-canvas-width 480)
 
-(def initial-state {:qubits 4 :next-id 0 :gates [] :defs {}})
+(def initial-state {:qubits 4 :cbits 0 :next-id 0 :gates [] :defs {}})
 
 (def state (atom initial-state))
 
 (defn wire-y [wire]
   (+ top-pad (* wire wire-gap)))
+
+(defn cwire-y [idx qubits]
+  (+ top-pad (* (+ qubits idx) wire-gap)))
 
 (defn col-x [col]
   (+ origin-x (* col col-gap)))
@@ -52,11 +58,11 @@
 (defn gate-top [wire]
   (- (wire-y wire) (/ gate-size 2)))
 
-(defn canvas-size [{:keys [qubits gates]}]
+(defn canvas-size [{:keys [qubits cbits gates]}]
   (let [max-col (apply max 0 (map :col gates))
         cols (max min-cols (inc max-col))]
     {:width (max (+ origin-x (* cols col-gap) right-pad) min-canvas-width)
-     :height (+ top-pad (* qubits wire-gap) bottom-pad)}))
+     :height (+ top-pad (* (+ (or cbits 0) qubits) wire-gap) bottom-pad)}))
 
 (defn snap-wire [y qubits]
   (int (-> (/ (- y top-pad) wire-gap) Math/round (max 0) (min (dec qubits)))))
@@ -147,3 +153,6 @@
         (assoc :qubits qubits)
         (update :gates (fn [gates]
                          (filterv #(every? (fn [w] (< w qubits)) (gate-wires %)) gates))))))
+
+(defn set-cbits-in-state [current raw]
+  (assoc current :cbits (max min-cbits (min max-cbits (int raw)))))

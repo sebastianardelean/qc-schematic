@@ -5,15 +5,23 @@
 (deftest gate-src-test
   (testing "known type returns its asset"
     (is (= "static/hadamard.svg" (model/gate-src :h)))
-    (is (= "static/x.svg" (model/gate-src :x))))
+    (is (= "static/x.svg" (model/gate-src :x)))
+    (is (= "static/measure.svg" (model/gate-src :measure))))
   (testing "unknown type falls back"
     (is (= "static/hadamard.svg" (model/gate-src :nope)))))
+
+(deftest palette-types-test
+  (is (some #{:measure} model/palette-types)))
 
 (deftest geometry-test
   (is (= (+ model/top-pad (* 2 model/wire-gap)) (model/wire-y 2)))
   (is (= (+ model/origin-x (* 3 model/col-gap)) (model/col-x 3)))
   (is (= (- (model/col-x 3) (/ model/gate-size 2)) (model/gate-left 3)))
   (is (= (- (model/wire-y 1) (/ model/gate-size 2)) (model/gate-top 1))))
+
+(deftest cwire-y-test
+  (is (= (model/wire-y 2) (model/cwire-y 0 2)))
+  (is (= (model/wire-y 3) (model/cwire-y 1 2))))
 
 (deftest snap-wire-test
   (is (= 0 (model/snap-wire 0 4)))
@@ -29,7 +37,15 @@
 (deftest gate-wires-test
   (is (= [1] (model/gate-wires {:type :x :wire 1})))
   (is (= '(1 2 3) (model/gate-wires {:type :cx :wire 1 :target 3})))
-  (is (= [2 4] (model/gate-wires {:type :custom :wires [2 4]}))))
+  (is (= [2 4] (model/gate-wires {:type :custom :wires [2 4]})))
+  (is (= [2] (model/gate-wires {:type :measure :wire 2}))))
+
+(deftest target-cell-measure-test
+  (let [st {:qubits 4 :gates []}
+        cell (model/target-cell st :measure model/origin-x model/top-pad)]
+    (is (= :measure (:type cell)))
+    (is (= 0 (:wire cell)))
+    (is (nil? (:target cell)))))
 
 (deftest blocks-cell-test
   (let [g {:type :x :wire 1 :col 2}]
@@ -110,7 +126,11 @@
       (is (> wide base))))
   (testing "grows with more qubits"
     (is (< (:height (model/canvas-size {:qubits 1 :gates []}))
-           (:height (model/canvas-size {:qubits 8 :gates []}))))))
+           (:height (model/canvas-size {:qubits 8 :gates []})))))
+  (testing "grows with classical bits"
+    (let [plain (:height (model/canvas-size {:qubits 2 :cbits 0 :gates []}))
+          both (:height (model/canvas-size {:qubits 2 :cbits 3 :gates []}))]
+      (is (= (* 3 model/wire-gap) (- both plain))))))
 
 (deftest state-helpers-test
   (let [st (model/add-gate-to-state model/initial-state {:type :x :wire 0 :col 0})]
@@ -127,3 +147,9 @@
   (testing "clamping"
     (is (= model/min-qubits (:qubits (model/set-qubits-in-state model/initial-state 0))))
     (is (= model/max-qubits (:qubits (model/set-qubits-in-state model/initial-state 99))))))
+
+(deftest set-cbits-in-state-test
+  (is (= 3 (:cbits (model/set-cbits-in-state model/initial-state 3))))
+  (testing "clamping"
+    (is (= model/min-cbits (:cbits (model/set-cbits-in-state model/initial-state -5))))
+    (is (= model/max-cbits (:cbits (model/set-cbits-in-state model/initial-state 99))))))

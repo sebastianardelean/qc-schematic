@@ -19,11 +19,20 @@
     (is (re-find #"include \"stdgates.inc\";" text))
     (is (re-find #"qubit\[2\] q;" text))
     (is (re-find #"h q\[0\];" text))
-    (is (re-find #"cx q\[0\], q\[1\];" text)))
+    (is (re-find #"cx q\[0\], q\[1\];" text))
+    (is (not (re-find #"\bbit\[" text))))
   (testing "emits defs before qubit declaration"
     (let [text (qasm/generate-qasm {:qubits 2 :gates []
                                     :defs {"foo" {:arity 1 :lines ["gate foo a { x a; }"]}}})]
       (is (re-find #"gate foo a \{ x a; \}" text)))))
+
+(deftest generate-qasm-cbits-test
+  (let [text (qasm/generate-qasm {:qubits 2 :cbits 3 :gates []})]
+    (is (re-find #"\bbit\[3\] c;" text)))
+  (let [text (qasm/generate-qasm {:qubits 2 :cbits 0 :gates []})]
+    (is (not (re-find #"\bbit\[" text))))
+  (let [text (qasm/generate-qasm {:qubits 2 :gates []})]
+    (is (not (re-find #"\bbit\[" text)))))
 
 (deftest assign-col-test
   (is (= [0 {0 1}] (qasm/assign-col {} [0])))
@@ -34,6 +43,7 @@
   (let [res (qasm/parse-qasm "OPENQASM 3;\ninclude \"stdgates.inc\";\nqubit[3] q;\nh q[0];\ncx q[0], q[2];\n")]
     (is (true? (:ok res)))
     (is (= 3 (:qubits res)))
+    (is (= 0 (:cbits res)))
     (is (= 2 (count (:gates res))))
     (let [[h cx] (:gates res)]
       (is (= :h (:type h)))
@@ -41,6 +51,18 @@
       (is (= :cx (:type cx)))
       (is (= 0 (:wire cx)))
       (is (= 2 (:target cx))))))
+
+(deftest parse-bit-declaration-test
+  (let [res (qasm/parse-qasm "qubit[2] q;\nbit[2] c;\nmeasure q[0];")]
+    (is (true? (:ok res)))
+    (is (= 2 (:cbits res))))
+  (testing "invalid classical bit count"
+    (is (false? (:ok (qasm/parse-qasm "qubit[2] q;\nbit[99] c;")))))
+  (testing "round trip"
+    (let [text (qasm/generate-qasm {:qubits 2 :cbits 2 :gates []})
+          res (qasm/parse-qasm text)]
+      (is (true? (:ok res)))
+      (is (= 2 (:cbits res))))))
 
 (deftest parse-comments-and-angles-test
   (let [res (qasm/parse-qasm "qubit[2] q;\nrx(pi/4) q[1]; // rotate\n// full line\n")]
@@ -73,6 +95,64 @@
     (is (true? (:ok res)))
     (is (= 1 (get-in res [:defs "foo" :arity])))
     (is (= :custom (:type (first (:gates res)))))))
+
+(deftest parse-def-brace-on-next-line-test
+  (testing "gate definition with the brace on its own line"
+    (let [text (str "qubit[2] q;\n"
+                    "gate cphase(theta) a, b\n"
+                    "{\n"
+                    "  U(0, 0, theta / 2) a;\n"
+                    "  CX a, b;\n"
+                    "}\n"
+                    "cphase(pi / 2) q[0], q[1];\n")
+          res (qasm/parse-qasm text)]
+      (is (true? (:ok res)))
+      (is (= 2 (get-in res [:defs "cphase" :arity])))
+      (let [g (first (:gates res))]
+        (is (= :custom (:type g)))
+        (is (= "cphase" (:name g)))
+        (is (= [0 1] (:wires g))))))
+  (testing "TODO example with unicode parameters"
+    (let [text (str "qubit[2] q;\n"
+                    "gate cphase(θ) a, b\n"
+                    "{\n"
+                    "  U(0, 0, θ / 2) a;\n"
+                    "  CX a, b;\n"
+                    "  U(0, 0, -θ / 2) b;\n"
+                    "  CX a, b;\n"
+                    "  U(0, 0, θ / 2) b;\n"
+                    "}\n"
+                    "cphase(π / 2) q[0], q[1];\n")
+          res (qasm/parse-qasm text)]
+      (is (true? (:ok res)))
+      (is (= :custom (:type (first (:gates res)))))
+      (is (= [0 1] (:wires (first (:gates res))))))))
+
+(deftest strip-comment-test
+  (is (= "h q[0];" (qasm/strip-comment "h q[0]; // comment")))
+  (is (= "h q[0];" (qasm/strip-comment "h q[0];")))
+  (is (= "" (qasm/strip-comment "// full line comment"))))
+
+(deftest gate-qasm-measure-test
+  (is (= "measure q[3];" (qasm/gate-qasm {:type :measure :wire 3}))))
+
+(deftest generate-qasm-measure-test
+  (let [text (qasm/generate-qasm {:qubits 2
+                                  :gates [{:type :measure :wire 0 :col 0 :id 0}]})]
+    (is (re-find #"measure q\[0\];" text))))
+
+(deftest parse-measure-test
+  (testing "bare measure"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nmeasure q[1];")]
+      (is (true? (:ok res)))
+      (is (= :measure (:type (first (:gates res)))))
+      (is (= 1 (:wire (first (:gates res)))))))
+  (testing "measure with classical destination"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nmeasure q[0] -> c[0];")]
+      (is (true? (:ok res)))
+      (is (= :measure (:type (first (:gates res)))))))
+  (testing "measure out of range"
+    (is (false? (:ok (qasm/parse-qasm "qubit[1] q;\nmeasure q[5];"))))))
 
 (deftest parse-invalid-test
   (testing "missing qubit declaration"

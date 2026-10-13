@@ -160,6 +160,15 @@ body {
   background-size: 40px 40px;
 }
 
+.cwire {
+  position: absolute;
+  height: 40px;
+  background-image: url("static/cwire-line.svg");
+  background-repeat: repeat-x;
+  background-position: left center;
+  background-size: 40px 40px;
+}
+
 .zero-state,
 .gate-preview {
   position: absolute;

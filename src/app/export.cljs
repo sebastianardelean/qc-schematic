@@ -17,6 +17,7 @@
     :ry "Ry"
     :rz "Rz"
     :p "P"
+    :measure "M"
     (string/upper-case (get-in model/gate-types [type :qasm] "?"))))
 
 (defn- wire-svg [wire width]
@@ -51,11 +52,11 @@
          (esc (gate-label gate)) "</text>")))
 
 (defn- cx-gate-svg [{:keys [col wire target]}]
-  (let [{:keys [above span]} (model/cx-geometry wire target)
+  (let [{:keys [above below]} (model/cx-geometry wire target)
         x (model/gate-left col)
         cxx (+ x (/ model/gate-size 2))
-        top (- (model/wire-y above) (/ model/gate-size 2))
-        bottom (+ top span model/gate-size)]
+        top (model/wire-y above)
+        bottom (model/wire-y below)]
     (str "<line x1=\"" cxx "\" y1=\"" top "\" x2=\"" cxx "\" y2=\"" bottom "\" "
          "stroke=\"#3a4a5b\" stroke-width=\"2\"/>"
          "<circle cx=\"" cxx "\" cy=\"" (model/wire-y wire) "\" r=\"5\" fill=\"#3a4a5b\"/>"

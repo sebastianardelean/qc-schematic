@@ -55,6 +55,23 @@
   (is (= (count model/palette-types)
          (.-length (.querySelectorAll (el "palette") ".palette-gate")))))
 
+(deftest cbits-input-test
+  (ui/init)
+  (is (some? (el "cbits")))
+  (is (= "0" (.-value (el "cbits"))))
+  (testing "change builds classical wires and emits bit declaration"
+    (let [input (el "cbits")]
+      (set! (.-value input) "3")
+      (.dispatchEvent input (ev "change" {"target" input}))
+      (is (= 3 (:cbits @model/state)))
+      (is (= 3 (.-length (.querySelectorAll (el "wires-layer") ".cwire"))))
+      (is (re-find #"\bbit\[3\] c;" (.-value (el "qasm")))))))
+
+(deftest cbits-clamp-test
+  (ui/init)
+  (ui/set-cbits! 99)
+  (is (= model/max-cbits (:cbits @model/state))))
+
 (deftest render-code-test
   (ui/init)
   (ui/add-gate! {:type :h :wire 0 :col 0})
@@ -86,6 +103,13 @@
   (is (= 2 (:qubits @model/state)))
   (is (= [:h :cx] (map :type (:gates @model/state))))
   (is (= "2" (.-value (el "qubits")))))
+
+(deftest apply-qasm-cbits-test
+  (ui/init)
+  (ui/apply-qasm! "qubit[2] q;\nbit[2] c;\nh q[0];")
+  (is (= 2 (:cbits @model/state)))
+  (is (= "2" (.-value (el "cbits"))))
+  (is (= 2 (.-length (.querySelectorAll (el "wires-layer") ".cwire")))))
 
 (deftest current-qasm-test
   (ui/init)
@@ -140,6 +164,18 @@
         (ui/target-drag-up up)
         (is (nil? @ui/target-drag))
         (is (= 2 (:target (first (:gates @model/state)))))))))
+
+(deftest measure-drop-test
+  (ui/init)
+  (reset! ui/drag-type :measure)
+  (ui/set-drag-active! true)
+  (let [canvas (el "canvas")
+        drop (ev "drop" {"dataTransfer" (data-transfer (js-obj))
+                         "clientX" 100 "clientY" 50})]
+    (aset drop "currentTarget" canvas)
+    (.dispatchEvent canvas drop)
+    (is (= :measure (:type (first (:gates @model/state)))))
+    (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".gate"))))))
 
 (deftest handle-qubits-input-test
   (ui/init)

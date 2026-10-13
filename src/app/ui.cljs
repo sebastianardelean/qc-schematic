@@ -175,16 +175,22 @@
   (when-let [input (js/document.getElementById "qubits")]
     (set! (.-value input) (str (:qubits @model/state)))))
 
+(defn sync-cbits-input! []
+  (when-let [input (js/document.getElementById "cbits")]
+    (set! (.-value input) (str (:cbits @model/state)))))
+
 (defn apply-qasm! [text]
   (let [parsed (qasm/parse-qasm text)]
     (when (:ok parsed)
       (swap! model/state assoc
              :qubits (:qubits parsed)
+             :cbits (or (:cbits parsed) 0)
              :next-id (count (:gates parsed))
              :defs (:defs parsed)
              :gates (:gates parsed))
       (build-wires!)
       (sync-qubits-input!)
+      (sync-cbits-input!)
       (render-gates!))))
 
 (defn schedule-parse! []
@@ -242,7 +248,7 @@
   (set-drag-active! false))
 
 (defn build-wires! []
-  (let [{:keys [qubits]} @model/state
+  (let [{:keys [qubits cbits]} @model/state
         layer (js/document.getElementById "wires-layer")]
     (set! (.-innerHTML layer) "")
     (doseq [wire (range qubits)]
@@ -258,11 +264,23 @@
                                 :height model/gate-size
                                 :style (str "left:" (- model/zero-center (/ model/gate-size 2)) "px;"
                                             "top:" (model/gate-top wire) "px;")})))
+    (doseq [i (range (or cbits 0))]
+      (.appendChild layer
+                    (create-el :div
+                               {:class "cwire"
+                                :style (str "left:" model/line-start "px;right:0;top:" (- (model/cwire-y i qubits) 20) "px;")})))
     (layout-canvas!)))
 
 (defn set-qubits! [raw]
   (when (and (number? raw) (not (js/isNaN raw)))
     (swap! model/state model/set-qubits-in-state raw)
+    (build-wires!)
+    (render-gates!)
+    (render-code!)))
+
+(defn set-cbits! [raw]
+  (when (and (number? raw) (not (js/isNaN raw)))
+    (swap! model/state model/set-cbits-in-state raw)
     (build-wires!)
     (render-gates!)
     (render-code!)))
@@ -296,6 +314,14 @@
     (set-qubits! (js/parseInt (.-value input) 10))
     (set! (.-value input) (str (:qubits @model/state)))))
 
+(defn handle-cbits-input [event]
+  (set-cbits! (js/parseInt (.-value (.-target event)) 10)))
+
+(defn handle-cbits-change [event]
+  (let [input (.-target event)]
+    (set-cbits! (js/parseInt (.-value input) 10))
+    (set! (.-value input) (str (:cbits @model/state)))))
+
 (defn operations-panel []
   (let [qubits-input (create-el :input
                                 {:id "qubits"
@@ -303,9 +329,18 @@
                                  :min model/min-qubits
                                  :max model/max-qubits
                                  :step 1
-                                 :value (:qubits @model/state)})]
+                                 :value (:qubits @model/state)})
+        cbits-input (create-el :input
+                               {:id "cbits"
+                                :type "number"
+                                :min model/min-cbits
+                                :max model/max-cbits
+                                :step 1
+                                :value (or (:cbits @model/state) 0)})]
     (.addEventListener qubits-input "input" handle-qubits-input)
     (.addEventListener qubits-input "change" handle-qubits-change)
+    (.addEventListener cbits-input "input" handle-cbits-input)
+    (.addEventListener cbits-input "change" handle-cbits-change)
     (create-el :aside
                {:id "operations"}
                (create-el :section
@@ -315,7 +350,9 @@
                (create-el :section
                           {:class "panel-section qubits-section"}
                           (create-el :label {:for "qubits"} "Number of qubits")
-                          qubits-input))))
+                          qubits-input
+                          (create-el :label {:for "cbits"} "Number of classical bits")
+                          cbits-input))))
 
 (defn canvas-panel []
   (create-el :div

@@ -1,6 +1,7 @@
 (ns app.export-test
   (:require [cljs.test :refer [deftest testing is]]
-            [app.export :as export]))
+            [app.export :as export]
+            [app.model :as model]))
 
 (deftest circuit-svg-test
   (let [svg (export/circuit->svg {:qubits 2 :gates [{:type :h :wire 0 :col 0 :id 0}]})]
@@ -27,7 +28,15 @@
 
 (deftest circuit-svg-cx-test
   (let [svg (export/circuit->svg {:qubits 3 :gates [{:type :cx :wire 0 :target 2 :col 0 :id 0}]})]
-    (is (re-find #"<circle" svg))))
+    (is (re-find #"<circle" svg))
+    (testing "vertical line spans exactly the two wires, not beyond"
+      (is (re-find (re-pattern (str "y1=\"" (model/wire-y 0) "\"")
+                               ) svg))
+      (is (re-find (re-pattern (str "y2=\"" (model/wire-y 2) "\"")) svg)))))
+
+(deftest circuit-svg-measure-test
+  (let [svg (export/circuit->svg {:qubits 1 :gates [{:type :measure :wire 0 :col 0 :id 0}]})]
+    (is (re-find #">M<" svg))))
 
 (deftest circuit-svg-escapes-test
   (let [svg (export/circuit->svg {:qubits 1
