@@ -7,6 +7,9 @@ out/
 .shadow-cljs/
 .cpcache/
 
+# electron-builder output
+dist/
+
 # Test coverage output
 coverage/
 .c8tmp/
