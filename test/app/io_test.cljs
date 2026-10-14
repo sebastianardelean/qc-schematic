@@ -19,6 +19,39 @@
   (testing "setup! is a no-op without electronAPI"
     (with-api nil (fn [] (is (nil? (io/setup! {:get-qasm (fn [] "x")})))))))
 
+(deftest result-field-test
+  (testing "reads keywords from a cljs map"
+    (is (true? (io/result-field {:ok true :content "x"} :ok)))
+    (is (= "x" (io/result-field {:ok true :content "x"} :content))))
+  (testing "reads fields from a plain js object (real ipcRenderer.invoke shape)"
+    (is (true? (io/result-field (js-obj "ok" true "content" "x") :ok)))
+    (is (= "x" (io/result-field (js-obj "ok" true "content" "x") :content)))
+    (is (nil? (io/result-field (js-obj "ok" false) :content)))
+    (is (nil? (io/result-field nil :ok)))))
+
+(deftest import-js-object-result-test
+  (testing "import applies content when the main process returns a plain object"
+    (let [calls (atom {})
+          api (js-obj)]
+      (aset api "onMenuExport" (fn [_] nil))
+      (aset api "onMenuExportSvg" (fn [_] nil))
+      (aset api "onMenuSave" (fn [_] nil))
+      (aset api "onMenuSaveAs" (fn [_] nil))
+      (aset api "onRequestSnapshot" (fn [_] nil))
+      (aset api "onMenuSettings" (fn [_] nil))
+      (aset api "onMenuImport" (fn [cb] (swap! calls assoc :import cb)))
+      (aset api "importQasm" (fn []
+                               (js-obj "then"
+                                       (fn [cb]
+                                         (cb (js-obj "ok" true
+                                                     "content" "qubit[1] q;\nx q[0];"))))))
+      (with-api api
+                (fn []
+                  (io/setup! {:get-qasm (fn [] "")
+                              :on-import (fn [content] (swap! calls assoc :imported content))})
+                  ((:import @calls))
+                  (is (= "qubit[1] q;\nx q[0];" (:imported @calls))))))))
+
 (deftest set-snapshot-period-test
   (testing "no-op without electronAPI"
     (with-api nil (fn [] (is (nil? (io/set-snapshot-period! 5))))))

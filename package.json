@@ -9,6 +9,9 @@
         "build:cljs": "shadow-cljs release app",
         "watch:cljs": "shadow-cljs watch app",
         "test": "shadow-cljs compile test && node out/node-test.js",
+        "test:integration": "shadow-cljs compile integration && node out/integration-test.js",
+        "test:system": "electron test/system/electron-entry.cjs",
+        "test:all": "npm test && npm run test:integration && npm run test:system",
         "coverage": "shadow-cljs compile test && c8 --reporter=lcov --reporter=text-summary --temp-directory .c8tmp node out/node-test.js && node scripts/coverage.mjs"
     },
     "keywords": [],

@@ -11,6 +11,12 @@
   (when-let [api (electron-api)]
     (.setSnapshotPeriod api minutes)))
 
+(defn result-field [result k]
+  (cond
+    (nil? result) nil
+    (map? result) (get result k)
+    :else (aget result (name k))))
+
 (defn setup!
   [{:keys [get-qasm on-import get-svg on-settings snapshot-minutes]}]
   (when-let [api (electron-api)]
@@ -19,8 +25,8 @@
                    (fn []
                      (-> (.importQasm api)
                          (.then (fn [res]
-                                  (when (:ok res)
-                                    (on-import (:content res))))))))
+                                  (when (result-field res :ok)
+                                    (on-import (result-field res :content))))))))
     (.onMenuExportSvg api (fn [] (.exportSvg api (get-svg))))
     (.onMenuSave api (fn [] (.saveQasm api (get-qasm))))
     (.onMenuSaveAs api (fn [] (.saveQasmAs api (get-qasm))))
