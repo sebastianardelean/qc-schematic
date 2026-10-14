@@ -15,10 +15,11 @@
    :p {:qasm "p" :src "static/phase.svg" :angle "pi/2"}
    :id {:qasm "id" :src "static/identity.svg"}
    :cx {:qasm "cx" :src "static/cx.svg"}
-   :measure {:qasm "measure" :src "static/measure.svg"}})
+   :measure {:qasm "measure" :src "static/measure.svg"}
+   :barrier {:qasm "barrier" :src "static/barrier.svg"}})
 
 (def palette-types
-  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx :measure])
+  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx :measure :barrier])
 
 (defn gate-src [type]
   (get-in gate-types [type :src] "static/hadamard.svg"))
@@ -60,9 +61,10 @@
 
 (defn canvas-size [{:keys [qubits cbits gates]}]
   (let [max-col (apply max 0 (map :col gates))
-        cols (max min-cols (inc max-col))]
+        cols (max min-cols (inc max-col))
+        rows (+ qubits (if (pos? (or cbits 0)) 1 0))]
     {:width (max (+ origin-x (* cols col-gap) right-pad) min-canvas-width)
-     :height (+ top-pad (* (+ (or cbits 0) qubits) wire-gap) bottom-pad)}))
+     :height (+ top-pad (* rows wire-gap) bottom-pad)}))
 
 (defn snap-wire [y qubits]
   (int (-> (/ (- y top-pad) wire-gap) Math/round (max 0) (min (dec qubits)))))
@@ -84,7 +86,7 @@
                 (< (min (:wire gate) (:target gate))
                    wire
                    (max (:wire gate) (:target gate))))
-           (and (= (:type gate) :custom)
+           (and (contains? #{:custom :barrier} (:type gate))
                 (some #(= % wire) (gate-wires gate))))))
 
 (defn blocked? [gates wire col]
@@ -115,8 +117,9 @@
   [{:keys [qubits gates] :as _state} type x y]
   (let [wire (snap-wire y qubits)
         target (when (= type :cx) (cx-target wire qubits))
-        candidate {:type type :wire wire :target target
-                   :angle (get-in gate-types [type :angle])}
+        candidate (cond-> {:type type :wire wire :target target
+                           :angle (get-in gate-types [type :angle])}
+                    (= type :barrier) (assoc :wires (vec (range qubits))))
         col (nearest-free-col gates (snap-col x) (affected-wires candidate))]
     (assoc candidate :col col)))
 
@@ -154,5 +157,12 @@
         (update :gates (fn [gates]
                          (filterv #(every? (fn [w] (< w qubits)) (gate-wires %)) gates))))))
 
-(defn set-cbits-in-state [current raw]
-  (assoc current :cbits (max min-cbits (min max-cbits (int raw)))))
+(defn measure-gate? [gate]
+  (= (:type gate) :measure))
+
+(defn ensure-measure-cbits [current]
+  (if (and (zero? (or (:cbits current) 0))
+           (some measure-gate? (:gates current)))
+    (let [qubits (or (:qubits current) min-cbits)]
+      (assoc current :cbits (max min-cbits (min max-cbits qubits))))
+    current))

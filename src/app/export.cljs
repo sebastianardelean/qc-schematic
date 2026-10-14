@@ -64,10 +64,20 @@
          "fill=\"none\" stroke=\"#3a4a5b\" stroke-width=\"2\"/>"
          "<circle cx=\"" cxx "\" cy=\"" (model/wire-y target) "\" r=\"6\" fill=\"#3a4a5b\"/>")))
 
+(defn- barrier-gate-svg [{:keys [col wires]}]
+  (let [above (apply min wires)
+        below (apply max wires)
+        x (+ (model/gate-left col) (/ model/gate-size 2))
+        y1 (- (model/wire-y above) (/ model/gate-size 2))
+        y2 (+ (model/wire-y below) (/ model/gate-size 2))]
+    (str "<line x1=\"" x "\" y1=\"" y1 "\" x2=\"" x "\" y2=\"" y2 "\" "
+         "stroke=\"#3a4a5b\" stroke-width=\"2\" stroke-dasharray=\"6 4\"/>")))
+
 (defn- gate-svg [gate]
   (case (:type gate)
     :cx (cx-gate-svg gate)
     :custom (custom-gate-svg gate)
+    :barrier (barrier-gate-svg gate)
     (standard-gate-svg gate)))
 
 (defn circuit->svg [{:keys [qubits gates]}]

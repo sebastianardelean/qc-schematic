@@ -6,12 +6,14 @@
   (testing "known type returns its asset"
     (is (= "static/hadamard.svg" (model/gate-src :h)))
     (is (= "static/x.svg" (model/gate-src :x)))
-    (is (= "static/measure.svg" (model/gate-src :measure))))
+    (is (= "static/measure.svg" (model/gate-src :measure)))
+    (is (= "static/barrier.svg" (model/gate-src :barrier))))
   (testing "unknown type falls back"
     (is (= "static/hadamard.svg" (model/gate-src :nope)))))
 
 (deftest palette-types-test
-  (is (some #{:measure} model/palette-types)))
+  (is (some #{:measure} model/palette-types))
+  (is (some #{:barrier} model/palette-types)))
 
 (deftest geometry-test
   (is (= (+ model/top-pad (* 2 model/wire-gap)) (model/wire-y 2)))
@@ -38,6 +40,7 @@
   (is (= [1] (model/gate-wires {:type :x :wire 1})))
   (is (= '(1 2 3) (model/gate-wires {:type :cx :wire 1 :target 3})))
   (is (= [2 4] (model/gate-wires {:type :custom :wires [2 4]})))
+  (is (= [0 1 2] (model/gate-wires {:type :barrier :wire 0 :wires [0 1 2]})))
   (is (= [2] (model/gate-wires {:type :measure :wire 2}))))
 
 (deftest target-cell-measure-test
@@ -59,7 +62,12 @@
     (is (false? (model/blocks-cell? cx 4 1))))
   (let [custom {:type :custom :wires [1 3] :col 0}]
     (is (true? (model/blocks-cell? custom 3 0)))
-    (is (not (model/blocks-cell? custom 2 0)))))
+    (is (not (model/blocks-cell? custom 2 0))))
+  (let [barrier {:type :barrier :wire 0 :wires [0 1 2] :col 2}]
+    (is (true? (model/blocks-cell? barrier 1 2)))
+    (is (true? (model/blocks-cell? barrier 2 2)))
+    (is (not (model/blocks-cell? barrier 3 2)))
+    (is (not (model/blocks-cell? barrier 1 3)))))
 
 (deftest blocked-test
   (is (true? (model/blocked? [{:type :x :wire 0 :col 0}] 0 0)))
@@ -100,7 +108,11 @@
   (testing "placed gate avoids occupied column"
     (let [st {:qubits 4 :gates [{:type :x :wire 0 :col 0 :id 0}]}
           cell (model/target-cell st :h model/origin-x model/top-pad)]
-      (is (= 1 (:col cell))))))
+      (is (= 1 (:col cell)))))
+  (testing "barrier spans every qubit"
+    (let [cell (model/target-cell {:qubits 3 :gates []} :barrier model/origin-x model/top-pad)]
+      (is (= :barrier (:type cell)))
+      (is (= [0 1 2] (:wires cell))))))
 
 (deftest cx-geometry-test
   (is (= {:above 1 :below 3 :span (- (model/wire-y 3) (model/wire-y 1)) :control-at-top? true}
@@ -127,10 +139,12 @@
   (testing "grows with more qubits"
     (is (< (:height (model/canvas-size {:qubits 1 :gates []}))
            (:height (model/canvas-size {:qubits 8 :gates []})))))
-  (testing "grows with classical bits"
+  (testing "adds a single classical wire row, independent of the declared count"
     (let [plain (:height (model/canvas-size {:qubits 2 :cbits 0 :gates []}))
-          both (:height (model/canvas-size {:qubits 2 :cbits 3 :gates []}))]
-      (is (= (* 3 model/wire-gap) (- both plain))))))
+          both (:height (model/canvas-size {:qubits 2 :cbits 3 :gates []}))
+          more (:height (model/canvas-size {:qubits 2 :cbits 9 :gates []}))]
+      (is (= model/wire-gap (- both plain)))
+      (is (= both more)))))
 
 (deftest state-helpers-test
   (let [st (model/add-gate-to-state model/initial-state {:type :x :wire 0 :col 0})]
@@ -148,8 +162,16 @@
     (is (= model/min-qubits (:qubits (model/set-qubits-in-state model/initial-state 0))))
     (is (= model/max-qubits (:qubits (model/set-qubits-in-state model/initial-state 99))))))
 
-(deftest set-cbits-in-state-test
-  (is (= 3 (:cbits (model/set-cbits-in-state model/initial-state 3))))
-  (testing "clamping"
-    (is (= model/min-cbits (:cbits (model/set-cbits-in-state model/initial-state -5))))
-    (is (= model/max-cbits (:cbits (model/set-cbits-in-state model/initial-state 99))))))
+(deftest ensure-measure-cbits-test
+  (testing "measurement without classical bits adds one per qubit"
+    (let [st {:qubits 3 :cbits 0 :gates [{:type :measure :wire 0}]}]
+      (is (= 3 (:cbits (model/ensure-measure-cbits st))))))
+  (testing "no measurement leaves classical bits untouched"
+    (let [st {:qubits 3 :cbits 0 :gates [{:type :h :wire 0}]}]
+      (is (= 0 (:cbits (model/ensure-measure-cbits st))))))
+  (testing "existing classical bits are never grown"
+    (let [st {:qubits 3 :cbits 2 :gates [{:type :measure :wire 0}]}]
+      (is (= 2 (:cbits (model/ensure-measure-cbits st))))))
+  (testing "quantum bit count is clamped to the maximum"
+    (let [st {:qubits 99 :cbits 0 :gates [{:type :measure :wire 0}]}]
+      (is (= model/max-cbits (:cbits (model/ensure-measure-cbits st)))))))

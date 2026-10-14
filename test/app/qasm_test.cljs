@@ -9,6 +9,8 @@
   (is (= "rz(pi/2) q[1];" (qasm/gate-qasm {:type :rz :wire 1})))
   (is (= "cx q[0], q[2];" (qasm/gate-qasm {:type :cx :wire 0 :target 2})))
   (is (= "mygate q[0], q[2];" (qasm/gate-qasm {:type :custom :name "mygate" :wires [0 2]})))
+  (is (= "barrier q[0], q[1];" (qasm/gate-qasm {:type :barrier :wires [0 1]})))
+  (is (= "barrier;" (qasm/gate-qasm {:type :barrier :wires []})))
   (is (= "id q[3];" (qasm/gate-qasm {:type :unknown :wire 3}))))
 
 (deftest generate-qasm-test
@@ -63,6 +65,15 @@
           res (qasm/parse-qasm text)]
       (is (true? (:ok res)))
       (is (= 2 (:cbits res))))))
+
+(deftest parse-measure-defaults-cbits-test
+  (testing "measurement without bit declaration adds one classical bit per qubit"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nmeasure q[0];")]
+      (is (true? (:ok res)))
+      (is (= 2 (:cbits res)))))
+  (testing "explicit bit declaration is kept"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nbit[1] c;\nmeasure q[0];")]
+      (is (= 1 (:cbits res))))))
 
 (deftest parse-comments-and-angles-test
   (let [res (qasm/parse-qasm "qubit[2] q;\nrx(pi/4) q[1]; // rotate\n// full line\n")]
@@ -153,6 +164,27 @@
       (is (= :measure (:type (first (:gates res)))))))
   (testing "measure out of range"
     (is (false? (:ok (qasm/parse-qasm "qubit[1] q;\nmeasure q[5];"))))))
+
+(deftest generate-qasm-barrier-test
+  (let [text (qasm/generate-qasm {:qubits 2
+                                  :gates [{:type :barrier :wire 0 :wires [0 1] :col 0 :id 0}]})]
+    (is (re-find #"barrier q\[0\], q\[1\];" text))))
+
+(deftest parse-barrier-test
+  (testing "explicit wires"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nbarrier q[0], q[1];\nh q[0];")]
+      (is (true? (:ok res)))
+      (let [b (first (:gates res))]
+        (is (= :barrier (:type b)))
+        (is (= [0 1] (:wires b))))
+      (testing "gates after the barrier move to the next column"
+        (is (= 1 (:col (second (:gates res))))))))
+  (testing "bare barrier spans every qubit"
+    (let [res (qasm/parse-qasm "qubit[2] q;\nbarrier;")]
+      (is (true? (:ok res)))
+      (is (= [0 1] (:wires (first (:gates res)))))))
+  (testing "out of range wire"
+    (is (false? (:ok (qasm/parse-qasm "qubit[1] q;\nbarrier q[3];"))))))
 
 (deftest parse-invalid-test
   (testing "missing qubit declaration"

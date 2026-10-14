@@ -25,6 +25,9 @@
 (def qasm-measure-re
   #"^\s*measure\s+[A-Za-z_][A-Za-z0-9_]*\s*\[\s*(\d+)\s*\]\s*(?:->\s*[A-Za-z_][A-Za-z0-9_]*\s*\[\s*\d+\s*\]\s*)?;?\s*$")
 
+(def qasm-barrier-re
+  #"^\s*barrier\s*([^;]*);?\s*$")
+
 (defn strip-comment [raw]
   (let [idx (string/index-of raw "//")]
     (string/trim (if idx (subs raw 0 idx) raw))))
@@ -47,6 +50,10 @@
     (= type :cx) (str "cx q[" wire "], q[" target "];")
     (= type :measure) (str "measure q[" wire "];")
     (= type :custom) (str name " " (string/join ", " (map #(str "q[" % "]") wires)) ";")
+    (= type :barrier) (str "barrier"
+                           (when (seq wires)
+                             (str " " (string/join ", " (map #(str "q[" % "]") wires))))
+                           ";")
     :else
     (let [qname (get-in model/gate-types [type :qasm] "id")
           angle (or angle (get-in model/gate-types [type :angle]))]
@@ -83,10 +90,12 @@
     (let [raw (first lines)]
       (cond
         (nil? raw)
-        (if (and qubits (<= model/min-qubits qubits model/max-qubits)
-                 (<= model/min-cbits cbits model/max-cbits))
-          {:ok true :qubits qubits :cbits cbits :gates gates :defs defs}
-          {:ok false})
+        (let [result (model/ensure-measure-cbits {:qubits qubits :cbits cbits
+                                                  :gates gates :defs defs})]
+          (if (and qubits (<= model/min-qubits qubits model/max-qubits)
+                   (<= model/min-cbits (:cbits result) model/max-cbits))
+            (assoc result :ok true)
+            {:ok false}))
 
         def-name
         (let [raw-line (strip-comment raw)
@@ -134,6 +143,17 @@
                   wire (js/parseInt n 10)]
               (if (and (some? qubits) (<= 0 wire (dec qubits)))
                 (let [candidate {:type :measure :wire wire :target nil :angle nil}
+                      [col nextcol'] (assign-col nextcol (model/affected-wires candidate))]
+                  (recur (rest lines) qubits cbits nextcol' (inc id)
+                         (conj gates (assoc candidate :col col :id id)) defs nil 0 [] nil))
+                {:ok false}))
+
+            (re-matches qasm-barrier-re line)
+            (let [[_ args] (re-matches qasm-barrier-re line)
+                  ws (vec (sort (distinct (wire-indices args))))
+                  ws (if (seq ws) ws (when qubits (vec (range qubits))))]
+              (if (and qubits (seq ws) (every? #(<= 0 % (dec qubits)) ws))
+                (let [candidate {:type :barrier :wire (first ws) :wires ws :target nil :angle nil}
                       [col nextcol'] (assign-col nextcol (model/affected-wires candidate))]
                   (recur (rest lines) qubits cbits nextcol' (inc id)
                          (conj gates (assoc candidate :col col :id id)) defs nil 0 [] nil))

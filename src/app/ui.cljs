@@ -106,11 +106,20 @@
     :custom
     [(create-el :span {:class "custom-label"} name)]
 
+    :barrier
+    [(create-el :div {:class "barrier-line"})]
+
     [(create-el :img
                 {:class "gate-img"
                  :src (model/gate-src type)
                  :width model/gate-size
                  :height model/gate-size})]))
+
+(defn span-style [{:keys [col wires]}]
+  (let [above (apply min wires)
+        below (apply max wires)]
+    (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
+         "width:" model/gate-size "px;height:" (+ (- (model/wire-y below) (model/wire-y above)) model/gate-size) "px;")))
 
 (defn outer-style [{:keys [type wire target col wires]}]
   (cond
@@ -119,21 +128,33 @@
       (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
            "width:" model/gate-size "px;height:" (+ span model/gate-size) "px;"))
 
-    (= type :custom)
-    (let [above (apply min wires)
-          below (apply max wires)]
-      (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
-           "width:" model/gate-size "px;height:" (+ (- (model/wire-y below) (model/wire-y above)) model/gate-size) "px;"))
+    (contains? #{:custom :barrier} type)
+    (span-style {:col col :wires wires})
 
     :else
     (str "left:" (model/gate-left col) "px;top:" (model/gate-top wire) "px;"
          "width:" model/gate-size "px;height:" model/gate-size "px;")))
+
+(defn measure-link [gate]
+  (let [{:keys [qubits cbits]} @model/state
+        cbits (or cbits 0)]
+    (when (pos? cbits)
+      (let [y0 (model/wire-y (:wire gate))
+            y1 (model/cwire-y 0 qubits)]
+        (create-el :div
+                   {:class "measure-link"
+                    :style (str "left:" (/ model/gate-size 2) "px;"
+                                "top:" model/gate-size "px;"
+                                "height:" (- y1 y0 (/ model/gate-size 2)) "px;")})))))
 
 (defn gate-node [{:keys [id type] :as gate}]
   (let [node (create-el :div
                         {:class (str "gate" (when (= type :custom) " gate-custom"))
                          :title "Double-click to remove"
                          :style (outer-style gate)})]
+    (when (= type :measure)
+      (when-let [link (measure-link gate)]
+        (.appendChild node link)))
     (doseq [part (gate-shape gate)]
       (.appendChild node part))
     (when (= type :cx)
@@ -150,8 +171,14 @@
   (render-gates!)
   (render-code!))
 
+(defn canvas-viewport-width []
+  (if-let [canvas (js/document.getElementById "canvas")]
+    (.-clientWidth canvas)
+    0))
+
 (defn layout-canvas! []
-  (let [{:keys [width height]} (model/canvas-size @model/state)]
+  (let [{:keys [width height]} (model/canvas-size @model/state)
+        width (max width (canvas-viewport-width))]
     (doseq [id ["wires-layer" "gates-layer"]]
       (when-let [layer (js/document.getElementById id)]
         (let [style (.-style layer)]
@@ -175,10 +202,6 @@
   (when-let [input (js/document.getElementById "qubits")]
     (set! (.-value input) (str (:qubits @model/state)))))
 
-(defn sync-cbits-input! []
-  (when-let [input (js/document.getElementById "cbits")]
-    (set! (.-value input) (str (:cbits @model/state)))))
-
 (defn apply-qasm! [text]
   (let [parsed (qasm/parse-qasm text)]
     (when (:ok parsed)
@@ -190,7 +213,6 @@
              :gates (:gates parsed))
       (build-wires!)
       (sync-qubits-input!)
-      (sync-cbits-input!)
       (render-gates!))))
 
 (defn schedule-parse! []
@@ -210,6 +232,8 @@
 
 (defn add-gate! [gate]
   (swap! model/state model/add-gate-to-state gate)
+  (swap! model/state model/ensure-measure-cbits)
+  (build-wires!)
   (render-gates!)
   (render-code!))
 
@@ -249,6 +273,7 @@
 
 (defn build-wires! []
   (let [{:keys [qubits cbits]} @model/state
+        cwires (if (pos? (or cbits 0)) 1 0)
         layer (js/document.getElementById "wires-layer")]
     (set! (.-innerHTML layer) "")
     (doseq [wire (range qubits)]
@@ -264,7 +289,7 @@
                                 :height model/gate-size
                                 :style (str "left:" (- model/zero-center (/ model/gate-size 2)) "px;"
                                             "top:" (model/gate-top wire) "px;")})))
-    (doseq [i (range (or cbits 0))]
+    (doseq [i (range cwires)]
       (.appendChild layer
                     (create-el :div
                                {:class "cwire"
@@ -274,13 +299,6 @@
 (defn set-qubits! [raw]
   (when (and (number? raw) (not (js/isNaN raw)))
     (swap! model/state model/set-qubits-in-state raw)
-    (build-wires!)
-    (render-gates!)
-    (render-code!)))
-
-(defn set-cbits! [raw]
-  (when (and (number? raw) (not (js/isNaN raw)))
-    (swap! model/state model/set-cbits-in-state raw)
     (build-wires!)
     (render-gates!)
     (render-code!)))
@@ -314,14 +332,6 @@
     (set-qubits! (js/parseInt (.-value input) 10))
     (set! (.-value input) (str (:qubits @model/state)))))
 
-(defn handle-cbits-input [event]
-  (set-cbits! (js/parseInt (.-value (.-target event)) 10)))
-
-(defn handle-cbits-change [event]
-  (let [input (.-target event)]
-    (set-cbits! (js/parseInt (.-value input) 10))
-    (set! (.-value input) (str (:cbits @model/state)))))
-
 (defn operations-panel []
   (let [qubits-input (create-el :input
                                 {:id "qubits"
@@ -329,18 +339,9 @@
                                  :min model/min-qubits
                                  :max model/max-qubits
                                  :step 1
-                                 :value (:qubits @model/state)})
-        cbits-input (create-el :input
-                               {:id "cbits"
-                                :type "number"
-                                :min model/min-cbits
-                                :max model/max-cbits
-                                :step 1
-                                :value (or (:cbits @model/state) 0)})]
+                                 :value (:qubits @model/state)})]
     (.addEventListener qubits-input "input" handle-qubits-input)
     (.addEventListener qubits-input "change" handle-qubits-change)
-    (.addEventListener cbits-input "input" handle-cbits-input)
-    (.addEventListener cbits-input "change" handle-cbits-change)
     (create-el :aside
                {:id "operations"}
                (create-el :section
@@ -350,9 +351,7 @@
                (create-el :section
                           {:class "panel-section qubits-section"}
                           (create-el :label {:for "qubits"} "Number of qubits")
-                          qubits-input
-                          (create-el :label {:for "cbits"} "Number of classical bits")
-                          cbits-input))))
+                          qubits-input))))
 
 (defn canvas-panel []
   (create-el :div
@@ -381,23 +380,108 @@
                           (create-el :span {:class "code-hint"} "editable"))
                editor)))
 
+(defn toggle-settings! []
+  (when-let [panel (js/document.getElementById "settings-panel")]
+    (.toggle (.-classList panel) "hidden")))
+
+(def dark-pref-key "qc-schematic-dark")
+
+(defn dark-enabled? []
+  (try
+    (= "true" (.getItem (.-localStorage js/window) dark-pref-key))
+    (catch js/Error _ false)))
+
+(defn apply-dark! [enabled]
+  (.toggle (.-classList (.-body js/document)) "dark" enabled))
+
+(defn set-dark! [enabled]
+  (apply-dark! enabled)
+  (try
+    (.setItem (.-localStorage js/window) dark-pref-key (str enabled))
+    (catch js/Error _ nil)))
+
+(def snapshot-pref-key "qc-schematic-snapshot-minutes")
+(def default-snapshot-minutes 1)
+(def min-snapshot-minutes 1)
+(def max-snapshot-minutes 1440)
+
+(defn clamp-snapshot-minutes [raw]
+  (let [n (js/parseInt raw 10)]
+    (if (js/isNaN n)
+      default-snapshot-minutes
+      (max min-snapshot-minutes (min max-snapshot-minutes n)))))
+
+(defn snapshot-minutes []
+  (try
+    (let [raw (.getItem (.-localStorage js/window) snapshot-pref-key)]
+      (if (nil? raw) default-snapshot-minutes (clamp-snapshot-minutes raw)))
+    (catch js/Error _ default-snapshot-minutes)))
+
+(defn set-snapshot-minutes! [raw]
+  (let [minutes (clamp-snapshot-minutes raw)]
+    (try
+      (.setItem (.-localStorage js/window) snapshot-pref-key (str minutes))
+      (catch js/Error _ nil))
+    (io/set-snapshot-period! minutes)
+    minutes))
+
+(defn settings-panel []
+  (let [dark (create-el :input {:id "dark-toggle" :type "checkbox"})
+        period (create-el :input
+                          {:id "snapshot-period"
+                           :type "number"
+                           :min min-snapshot-minutes
+                           :max max-snapshot-minutes
+                           :step 1
+                           :value (snapshot-minutes)})
+        close (create-el :button {:id "settings-close" :type "button"} "Close")
+        panel (create-el :div
+                         {:id "settings-panel"
+                          :class "settings-overlay hidden"}
+                         (create-el :div
+                                    {:class "settings-card"}
+                                    (create-el :h2 {} "Settings")
+                                    (create-el :label
+                                               {:class "settings-row"}
+                                               dark
+                                               (create-el :span {} "Dark mode"))
+                                    (create-el :label
+                                               {:class "settings-row"}
+                                               (create-el :span {} "Snapshot period (minutes)")
+                                               period)
+                                    close))]
+    (let [enabled (dark-enabled?)]
+      (set! (.-checked dark) enabled)
+      (apply-dark! enabled))
+    (set! (.-value period) (str (snapshot-minutes)))
+    (.addEventListener dark "change" (fn [_] (set-dark! (.-checked dark))))
+    (.addEventListener period "change"
+                       (fn [_]
+                         (set! (.-value period) (str (set-snapshot-minutes! (.-value period))))))
+    (.addEventListener close "click" (fn [_] (toggle-settings!)))
+    panel))
+
 (defn setup-ipc! []
   (io/setup! {:get-qasm current-qasm
               :on-import (fn [content]
                            (apply-qasm! content)
                            (render-code!))
-              :get-svg (fn [] (export/circuit->svg @model/state))}))
+              :get-svg (fn [] (export/circuit->svg @model/state))
+              :on-settings toggle-settings!
+              :snapshot-minutes (snapshot-minutes)}))
 
 (defn init []
   (let [root (js/document.getElementById "app")]
     (.appendChild root (operations-panel))
     (.appendChild root (canvas-panel))
-    (.appendChild root (code-panel)))
+    (.appendChild root (code-panel))
+    (.appendChild root (settings-panel)))
   (build-wires!)
   (let [canvas (js/document.getElementById "canvas")]
     (.addEventListener canvas "dragover" handle-dragover)
     (.addEventListener canvas "dragleave" (fn [_] (hide-preview!)))
     (.addEventListener canvas "drop" handle-drop))
+  (.addEventListener js/window "resize" (fn [_] (layout-canvas!)))
   (render-gates!)
   (render-code!)
   (setup-ipc!))

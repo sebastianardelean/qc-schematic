@@ -32,12 +32,22 @@ cphase(π / 2) q[0], q[1];
 14. ~~Add symbol for measurement.~~
 15. ~~Under the number of qubits, add a new input to select the number of classical bits.~~ 
 16. ~~If the number of classical bits is greater than 0, update the canvas with a double line, and defined in QASM editor the classical bits.~~
-17. For the measurement operator, when added to the circuit, add vertical dotted line to the line of classical bits. If no classical bits are added, add them by default when the measurement operator is added to the circuit.
-18. Add the option to save the circuit by pressing CTRL-S or menu File->Save. If the circuit was not saved before by the user, the open a popup dialog to ask for the location of the save. Otherwise, overwrite the last save.
-18. If the user didn't save the project, create a snapshot every 1 minute, by saving a temp file in the folder where the last user save was done.
-19. If there is no user save, then do not create snapshots.
-20. File -> New shall create a new instance of the application.
-21. Rename Import Qasm to Open.
-22. Add Save As option
-23. Add in the toolbar the menu Preferences
-24. Under preferences add Settings
+17. ~~For the measurement operator, when added to the circuit, add vertical dotted line to the line of classical bits. If no classical bits are added, add them by default when the measurement operator is added to the circuit.~~
+18. ~~Add the option to save the circuit by pressing CTRL-S or menu File->Save. If the circuit was not saved before by the user, the open a popup dialog to ask for the location of the save. Otherwise, overwrite the last save.~~
+18. ~~If the user didn't save the project, create a snapshot every 1 minute, by saving a temp file in the folder where the last user save was done.~~
+19. ~~If there is no user save, then do not create snapshots.~~
+20. ~~File -> New shall create a new instance of the application.~~
+21. ~~Rename Import Qasm to Open.~~
+22. ~~Add Save As option~~
+23. ~~Add in the toolbar the menu Preferences~~
+24. ~~Under preferences add Settings~~
+25. ~~On save, all temp saves shall be deleted automatically~~
+26. ~~On measure, if there are more than 1 classical bits, don't add extra horizontal lines. make the change only in openqasm~~
+27. ~~Remove the menu Export OpenQASM since is already done by save option~~
+28. ~~Under settings add the option to change on dark mode.~~
+29. ~~When the first measurement is added and there is a number of qubits n, do not automatically draw n lines for the classical bits. Draw only one line and in the editor add n classical bits.~~
+30. ~~Remove the input for the number of classical bits~~
+31. ~~In settings, add an input to configure the period for snapshot. Use that value instead of 1 minute~~
+32. ~~On windows resize, the wires drawn on canvas do not automatically resize.~~
+33. ~~Implement the Edit actions on the editor content.~~
+34. ~~Add the barrier element~~

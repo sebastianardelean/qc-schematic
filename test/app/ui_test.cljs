@@ -5,7 +5,8 @@
             [app.ui :as ui]))
 
 (defn setup-dom []
-  (let [dom (JSDOM. "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>")
+  (let [dom (JSDOM. "<!DOCTYPE html><html><body><div id=\"app\"></div></body></html>"
+                    (js-obj "url" "http://localhost/"))
         window (.-window dom)]
     (aset js/globalThis "window" window)
     (aset js/globalThis "document" (.-document window))
@@ -52,25 +53,23 @@
   (is (= "TEXTAREA" (.-tagName (el "qasm"))))
   (is (= 4 (.-length (.querySelectorAll (el "wires-layer") ".wire"))))
   (is (= 4 (.-length (.querySelectorAll (el "wires-layer") ".zero-state"))))
+  (is (nil? (el "cbits")))
   (is (= (count model/palette-types)
          (.-length (.querySelectorAll (el "palette") ".palette-gate")))))
 
-(deftest cbits-input-test
+(deftest resize-layout-test
   (ui/init)
-  (is (some? (el "cbits")))
-  (is (= "0" (.-value (el "cbits"))))
-  (testing "change builds classical wires and emits bit declaration"
-    (let [input (el "cbits")]
-      (set! (.-value input) "3")
-      (.dispatchEvent input (ev "change" {"target" input}))
-      (is (= 3 (:cbits @model/state)))
-      (is (= 3 (.-length (.querySelectorAll (el "wires-layer") ".cwire"))))
-      (is (re-find #"\bbit\[3\] c;" (.-value (el "qasm")))))))
-
-(deftest cbits-clamp-test
-  (ui/init)
-  (ui/set-cbits! 99)
-  (is (= model/max-cbits (:cbits @model/state))))
+  (let [canvas (el "canvas")]
+    (testing "layers fill the viewport when it is wider than the content"
+      (js/Object.defineProperty canvas "clientWidth" (js-obj "value" 900 "configurable" true))
+      (.dispatchEvent js/window (ev "resize" {}))
+      (is (= "900px" (.-width (.-style (el "wires-layer")))))
+      (is (= "900px" (.-width (.-style (el "gates-layer"))))))
+    (testing "content wider than the viewport is preserved"
+      (js/Object.defineProperty canvas "clientWidth" (js-obj "value" 200 "configurable" true))
+      (ui/layout-canvas!)
+      (is (= (str (:width (model/canvas-size @model/state)) "px")
+             (.-width (.-style (el "wires-layer"))))))))
 
 (deftest render-code-test
   (ui/init)
@@ -108,8 +107,7 @@
   (ui/init)
   (ui/apply-qasm! "qubit[2] q;\nbit[2] c;\nh q[0];")
   (is (= 2 (:cbits @model/state)))
-  (is (= "2" (.-value (el "cbits"))))
-  (is (= 2 (.-length (.querySelectorAll (el "wires-layer") ".cwire")))))
+  (is (= 1 (.-length (.querySelectorAll (el "wires-layer") ".cwire")))))
 
 (deftest current-qasm-test
   (ui/init)
@@ -175,7 +173,27 @@
     (aset drop "currentTarget" canvas)
     (.dispatchEvent canvas drop)
     (is (= :measure (:type (first (:gates @model/state)))))
-    (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".gate"))))))
+    (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".gate"))))
+    (testing "classical bits default to one per qubit with a single canvas wire"
+      (is (= (:qubits @model/state) (:cbits @model/state)))
+      (is (= 1 (.-length (.querySelectorAll (el "wires-layer") ".cwire"))))
+      (is (re-find #"\bbit\[4\] c;" (.-value (el "qasm")))))
+    (testing "measurement links to the classical wire"
+      (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".measure-link")))))))
+
+(deftest barrier-drop-test
+  (ui/init)
+  (reset! ui/drag-type :barrier)
+  (ui/set-drag-active! true)
+  (let [canvas (el "canvas")
+        drop (ev "drop" {"dataTransfer" (data-transfer (js-obj))
+                         "clientX" 100 "clientY" 50})]
+    (aset drop "currentTarget" canvas)
+    (.dispatchEvent canvas drop)
+    (is (= :barrier (:type (first (:gates @model/state)))))
+    (is (= [0 1 2 3] (:wires (first (:gates @model/state)))))
+    (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".barrier-line"))))
+    (is (re-find #"barrier q\[0\], q\[1\], q\[2\], q\[3\];" (.-value (el "qasm"))))))
 
 (deftest handle-qubits-input-test
   (ui/init)
@@ -213,13 +231,74 @@
                                        (cb {:ok true
                                             :content "qubit[1] q;\nx q[0];"})))))
     (aset api "exportSvg" (fn [svg] (swap! calls assoc :svg-out svg)))
+    (aset api "onMenuSave" (fn [cb] (swap! calls assoc :save cb)))
+    (aset api "saveQasm" (fn [code] (swap! calls assoc :saved code)))
+    (aset api "onMenuSaveAs" (fn [cb] (swap! calls assoc :save-as cb)))
+    (aset api "saveQasmAs" (fn [code] (swap! calls assoc :saved-as code)))
+    (aset api "onRequestSnapshot" (fn [cb] (swap! calls assoc :snapshot cb)))
+    (aset api "saveSnapshot" (fn [code] (swap! calls assoc :snapshot-out code)))
+    (aset api "onMenuSettings" (fn [cb] (swap! calls assoc :settings cb)))
+    (aset api "setSnapshotPeriod" (fn [minutes] (swap! calls assoc :snapshot-period minutes)))
     (aset (.-window js/globalThis) "electronAPI" api)
     (ui/init)
+    (is (= ui/default-snapshot-minutes (:snapshot-period @calls)))
     (ui/add-gate! {:type :h :wire 0 :col 0})
     ((:export @calls))
     (is (re-find #"h q\[0\];" (:exported @calls)))
     ((:svg @calls))
     (is (re-find #"<svg" (:svg-out @calls)))
+    ((:save @calls))
+    (is (re-find #"h q\[0\];" (:saved @calls)))
+    ((:save-as @calls))
+    (is (re-find #"h q\[0\];" (:saved-as @calls)))
+    ((:snapshot @calls))
+    (is (re-find #"h q\[0\];" (:snapshot-out @calls)))
     ((:import @calls))
     (is (= [:x] (map :type (:gates @model/state))))
     (aset (.-window js/globalThis) "electronAPI" nil)))
+
+(deftest settings-toggle-test
+  (ui/init)
+  (let [panel (el "settings-panel")]
+    (is (true? (.contains (.-classList panel) "hidden")))
+    (ui/toggle-settings!)
+    (is (false? (.contains (.-classList panel) "hidden")))
+    (.dispatchEvent (el "settings-close") (ev "click" {}))
+    (is (true? (.contains (.-classList panel) "hidden")))))
+
+(deftest dark-mode-test
+  (ui/init)
+  (let [toggle (el "dark-toggle")
+        body (.-body js/document)]
+    (is (some? toggle))
+    (is (false? (.-checked toggle)))
+    (is (false? (.contains (.-classList body) "dark")))
+    (set! (.-checked toggle) true)
+    (.dispatchEvent toggle (ev "change" {}))
+    (is (true? (.contains (.-classList body) "dark")))
+    (set! (.-checked toggle) false)
+    (.dispatchEvent toggle (ev "change" {}))
+    (is (false? (.contains (.-classList body) "dark")))))
+
+(deftest snapshot-period-test
+  (ui/init)
+  (let [input (el "snapshot-period")]
+    (is (some? input))
+    (is (= "1" (.-value input)))
+    (is (= ui/default-snapshot-minutes (ui/snapshot-minutes)))
+    (set! (.-value input) "5")
+    (.dispatchEvent input (ev "change" {}))
+    (is (= 5 (ui/snapshot-minutes)))
+    (is (= "5" (.-value input)))
+    (testing "values are clamped to the allowed range"
+      (set! (.-value input) "9999")
+      (.dispatchEvent input (ev "change" {}))
+      (is (= ui/max-snapshot-minutes (ui/snapshot-minutes)))
+      (is (= (str ui/max-snapshot-minutes) (.-value input)))
+      (set! (.-value input) "-3")
+      (.dispatchEvent input (ev "change" {}))
+      (is (= ui/min-snapshot-minutes (ui/snapshot-minutes))))
+    (testing "non numeric input falls back to the default"
+      (set! (.-value input) "")
+      (.dispatchEvent input (ev "change" {}))
+      (is (= ui/default-snapshot-minutes (ui/snapshot-minutes))))))

@@ -38,6 +38,13 @@
   (let [svg (export/circuit->svg {:qubits 1 :gates [{:type :measure :wire 0 :col 0 :id 0}]})]
     (is (re-find #">M<" svg))))
 
+(deftest circuit-svg-barrier-test
+  (let [svg (export/circuit->svg {:qubits 3
+                                  :gates [{:type :barrier :wire 0 :wires [0 2] :col 0 :id 0}]})]
+    (is (re-find #"stroke-dasharray=\"6 4\"" svg))
+    (is (re-find (re-pattern (str "y1=\"" (- (model/wire-y 0) (/ model/gate-size 2)) "\"")) svg))
+    (is (re-find (re-pattern (str "y2=\"" (+ (model/wire-y 2) (/ model/gate-size 2)) "\"")) svg))))
+
 (deftest circuit-svg-escapes-test
   (let [svg (export/circuit->svg {:qubits 1
                                   :gates [{:type :custom :name "a<b&c" :wires [0] :col 0 :id 0}]})]

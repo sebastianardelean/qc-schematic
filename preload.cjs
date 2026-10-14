@@ -13,5 +13,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onMenuExportSvg: (callback) => {
     ipcRenderer.on("menu-export-svg", () => callback());
   },
-  exportSvg: (svg) => ipcRenderer.invoke("export-svg", svg)
+  exportSvg: (svg) => ipcRenderer.invoke("export-svg", svg),
+  onMenuSave: (callback) => {
+    ipcRenderer.on("menu-save-qasm", () => callback());
+  },
+  saveQasm: (code) => ipcRenderer.invoke("save-qasm", code),
+  onMenuSaveAs: (callback) => {
+    ipcRenderer.on("menu-save-as-qasm", () => callback());
+  },
+  saveQasmAs: (code) => ipcRenderer.invoke("save-as-qasm", code),
+  onRequestSnapshot: (callback) => {
+    ipcRenderer.on("request-snapshot", () => callback());
+  },
+  saveSnapshot: (code) => ipcRenderer.invoke("save-snapshot", code),
+  onMenuSettings: (callback) => {
+    ipcRenderer.on("menu-settings", () => callback());
+  },
+  setSnapshotPeriod: (minutes) => ipcRenderer.invoke("set-snapshot-period", minutes)
 });
