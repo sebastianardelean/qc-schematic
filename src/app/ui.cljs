@@ -1,6 +1,8 @@
 (ns app.ui
-  (:require [app.model :as model]
+  (:require [clojure.string :as string]
+            [app.model :as model]
             [app.qasm :as qasm]
+            [app.grammar :as grammar]
             [app.export :as export]
             [app.io :as io]))
 
@@ -192,11 +194,54 @@
       (.appendChild layer (gate-node gate)))
     (layout-canvas!)))
 
+(defn editor-text []
+  (let [node (js/document.getElementById "qasm")]
+    (cond
+      (nil? node) (qasm/generate-qasm @model/state)
+      (= "TEXTAREA" (.-tagName node)) (.-value node)
+      :else (.-textContent node))))
+
+(defn line-number-string [text]
+  (let [lines (inc (count (re-seq #"\n" (or text ""))))]
+    (string/join "\n" (map inc (range lines)))))
+
+(defn sync-editor-scroll! []
+  (let [gutter (js/document.getElementById "line-numbers")
+        editor (js/document.getElementById "qasm")]
+    (when (and gutter editor)
+      (set! (.-scrollTop gutter) (.-scrollTop editor)))))
+
+(defn update-line-numbers! []
+  (when-let [gutter (js/document.getElementById "line-numbers")]
+    (set! (.-textContent gutter) (line-number-string (editor-text)))
+    (sync-editor-scroll!)))
+
+(defn update-validation! []
+  (when-let [status (js/document.getElementById "qasm-status")]
+    (let [result (grammar/validate (editor-text))
+          node (js/document.getElementById "qasm")
+          classes (.-classList status)]
+      (if (:ok result)
+        (do
+          (set! (.-textContent status) "valid")
+          (.remove classes "invalid")
+          (when node (.remove (.-classList node) "invalid")))
+        (let [errs (:errors result)
+              first (first errs)
+              more (dec (count errs))]
+          (set! (.-textContent status)
+                (str "invalid: line " (:line first) ": " (:message first)
+                     (when (pos? more) (str " (+" more " more)"))))
+          (.add classes "invalid")
+          (when node (.add (.-classList node) "invalid")))))))
+
 (defn render-code! []
   (let [node (js/document.getElementById "qasm")]
     (if (= "TEXTAREA" (.-tagName node))
       (set! (.-value node) (qasm/generate-qasm @model/state))
-      (set! (.-textContent node) (qasm/generate-qasm @model/state)))))
+      (set! (.-textContent node) (qasm/generate-qasm @model/state))))
+  (update-line-numbers!)
+  (update-validation!))
 
 (defn sync-qubits-input! []
   (when-let [input (js/document.getElementById "qubits")]
@@ -213,7 +258,9 @@
              :gates (:gates parsed))
       (build-wires!)
       (sync-qubits-input!)
-      (render-gates!))))
+      (render-gates!))
+    (update-line-numbers!)
+    (update-validation!)))
 
 (defn schedule-parse! []
   (when @parse-timer (js/clearTimeout @parse-timer))
@@ -225,10 +272,7 @@
            250)))
 
 (defn current-qasm []
-  (let [node (js/document.getElementById "qasm")]
-    (if (and node (= "TEXTAREA" (.-tagName node)))
-      (.-value node)
-      (qasm/generate-qasm @model/state))))
+  (editor-text))
 
 (defn add-gate! [gate]
   (swap! model/state model/add-gate-to-state gate)
@@ -369,16 +413,27 @@
                            :autocapitalize "off"
                            :autocomplete "off"
                            :autocorrect "off"
-                           :wrap "off"})]
-    (.addEventListener editor "input" (fn [_] (schedule-parse!)))
+                           :wrap "off"})
+        gutter (create-el :div
+                          {:id "line-numbers"
+                           :class "line-numbers"
+                           :aria-hidden "true"})]
+    (.addEventListener editor "input"
+                       (fn [_]
+                         (schedule-parse!)
+                         (update-line-numbers!)))
+    (.addEventListener editor "scroll" (fn [_] (sync-editor-scroll!)))
     (.addEventListener editor "blur" (fn [_] (apply-qasm! (.-value editor))))
     (create-el :aside
                {:id "code-panel"}
                (create-el :div
                           {:class "panel-section code-header"}
                           (create-el :h2 {} "Editor")
-                          (create-el :span {:class "code-hint"} "editable"))
-               editor)))
+                          (create-el :span {:id "qasm-status" :class "code-hint"} "valid"))
+               (create-el :div
+                          {:class "code-body"}
+                          gutter
+                          editor))))
 
 (defn toggle-settings! []
   (when-let [panel (js/document.getElementById "settings-panel")]

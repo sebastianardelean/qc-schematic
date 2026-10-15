@@ -1,6 +1,7 @@
 (ns app.ui-test
   (:require [cljs.test :refer [deftest testing is use-fixtures]]
             ["jsdom" :refer [JSDOM]]
+            [clojure.string :as string]
             [app.model :as model]
             [app.ui :as ui]))
 
@@ -217,6 +218,51 @@
     (.dispatchEvent editor (ev "input" {}))
     (.dispatchEvent editor (ev "blur" {}))
     (is (= [:x] (map :type (:gates @model/state))))))
+
+(defn- line-count [s] (inc (count (re-seq #"\n" s))))
+
+(deftest line-numbers-test
+  (ui/init)
+  (let [editor (el "qasm")
+        gutter (el "line-numbers")]
+    (is (some? gutter))
+    (testing "the gutter mirrors the generated program"
+      (is (= "1" (first (string/split-lines (.-textContent gutter)))))
+      (is (= (line-count (.-value editor)) (line-count (.-textContent gutter)))))
+    (testing "editing the editor updates the gutter"
+      (set! (.-value editor) "qubit[2] q;\nh q[0];")
+      (.dispatchEvent editor (ev "input" {}))
+      (is (= "1\n2" (.-textContent gutter))))
+    (testing "a trailing newline adds a numbered line"
+      (set! (.-value editor) "a\n")
+      (.dispatchEvent editor (ev "input" {}))
+      (is (= "1\n2" (.-textContent gutter))))
+    (testing "vertical scrolling is mirrored onto the gutter"
+      (set! (.-scrollTop editor) 40)
+      (.dispatchEvent editor (ev "scroll" {}))
+      (is (= 40 (.-scrollTop gutter))))))
+
+(deftest line-number-string-test
+  (is (= "1" (ui/line-number-string "")))
+  (is (= "1\n2\n3" (ui/line-number-string "a\nb\nc")))
+  (is (= "1\n2" (ui/line-number-string "a\n"))))
+
+(deftest qasm-validation-status-test
+  (ui/init)
+  (let [editor (el "qasm")
+        status (el "qasm-status")]
+    (is (= "valid" (.-textContent status)))
+    (testing "a grammatical program is reported as valid"
+      (set! (.-value editor) "qubit[1] q;\nh q[0];")
+      (ui/apply-qasm! (.-value editor))
+      (is (= "valid" (.-textContent status)))
+      (is (false? (.contains (.-classList status) "invalid"))))
+    (testing "a malformed program is reported with a line number"
+      (set! (.-value editor) "qubit[1] q;\nh q[0]")
+      (ui/apply-qasm! (.-value editor))
+      (is (true? (.contains (.-classList status) "invalid")))
+      (is (re-find #"invalid: line 2" (.-textContent status)))
+      (is (true? (.contains (.-classList editor) "invalid"))))))
 
 (deftest setup-ipc-test
   (let [calls (atom {})

@@ -133,8 +133,41 @@ body {
   letter-spacing: 0.04em;
 }
 
+.code-hint.invalid {
+  color: #d64545;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+#qasm.invalid {
+  color: #b23a3a;
+}
+
+.code-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.line-numbers {
+  flex: none;
+  margin: 0;
+  padding: 0 8px 16px 16px;
+  overflow: hidden;
+  text-align: right;
+  font-family: "Cascadia Code", "Consolas", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #8a94a0;
+  white-space: pre;
+  user-select: none;
+  border-right: 1px solid #e3e7ec;
+}
+
 #qasm {
   flex: 1;
+  min-width: 0;
   margin: 0;
   padding: 0 16px 16px;
   overflow: auto;
@@ -351,6 +384,19 @@ body.dark #canvas {
 
 body.dark #qasm {
   color: #e6e9ee;
+}
+
+body.dark .line-numbers {
+  color: #5a6470;
+  border-right-color: #2c333c;
+}
+
+body.dark #qasm.invalid {
+  color: #ff9a9a;
+}
+
+body.dark .code-hint.invalid {
+  color: #ff9a9a;
 }
 
 body.dark .gate-custom {

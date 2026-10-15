@@ -51,3 +51,5 @@ cphase(π / 2) q[0], q[1];
 32. ~~On windows resize, the wires drawn on canvas do not automatically resize.~~
 33. ~~Implement the Edit actions on the editor content.~~
 34. ~~Add the barrier element~~
+35. ~~OpenQASM's grammar is available on https://openqasm.com/grammar/index.html. Implement a module that will verify if the generated code in the editor respects the grammar.~~
+36. ~~Show line numbers in editor~~
