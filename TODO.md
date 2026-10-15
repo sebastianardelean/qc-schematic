@@ -53,3 +53,4 @@ cphase(π / 2) q[0], q[1];
 34. ~~Add the barrier element~~
 35. ~~OpenQASM's grammar is available on https://openqasm.com/grammar/index.html. Implement a module that will verify if the generated code in the editor respects the grammar.~~
 36. ~~Show line numbers in editor~~
+37. Add readme in the repository
