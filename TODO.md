@@ -2,6 +2,8 @@
 
 Implement only the items that are not strikethrough:
 
+## For version 0.1.0-alpha
+
 1. ~~Make the openqasm view editable.~~
 2. ~~Reflect on the canvas the changes in the openqasm editor~~
 3. ~~Make the lines grey~~
@@ -53,4 +55,10 @@ cphase(π / 2) q[0], q[1];
 34. ~~Add the barrier element~~
 35. ~~OpenQASM's grammar is available on https://openqasm.com/grammar/index.html. Implement a module that will verify if the generated code in the editor respects the grammar.~~
 36. ~~Show line numbers in editor~~
-37. Add readme in the repository
+37. ~~Add readme in the repository~~
+
+## For version 0.1.1-alpha
+
+1. ~~The main window is currently splitted in 3. Instead, change it to be splitted in 2: operations and canvas. The editor window will be be launched separately by clicking on View->Windows->Editor.~~
+2. ~~Editor window shall not have toolbar~~
+3. ~~Add log to file with 5MB rotation~~

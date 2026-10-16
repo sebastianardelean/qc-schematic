@@ -12,7 +12,8 @@
         "test": "shadow-cljs compile test && node out/node-test.js",
         "test:integration": "shadow-cljs compile integration && node out/integration-test.js",
         "test:system": "electron test/system/electron-entry.cjs",
-        "test:all": "npm test && npm run test:integration && npm run test:system",
+        "test:logger": "node test/system/logger-test.cjs",
+        "test:all": "npm test && npm run test:integration && npm run test:logger && npm run test:system",
         "coverage": "shadow-cljs compile test && c8 --reporter=lcov --reporter=text-summary --temp-directory .c8tmp node out/node-test.js && node scripts/coverage.mjs",
         "dist": "npm run build:cljs && electron-builder --publish never",
         "dist:win": "npm run build:cljs && electron-builder --win --publish never",
@@ -47,7 +48,9 @@
         "files": [
             "main.cjs",
             "preload.cjs",
+            "logger.cjs",
             "index.html",
+            "editor.html",
             "styles.css",
             "public/js/**/*",
             "static/**/*"

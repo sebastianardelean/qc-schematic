@@ -1,14 +1,35 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createLogger, LOG_FILE_NAME } = require("./logger.cjs");
 
-let mainWindow = null;
 const filePaths = new Map();
+const mainWindows = new Set();
+const mainToEditor = new Map(); // main window webContents.id -> editor window
+const editorToMain = new Map(); // editor window webContents.id -> main window
 
 const DEFAULT_SNAPSHOT_MINUTES = 1;
 const MIN_SNAPSHOT_MINUTES = 1;
 const MAX_SNAPSHOT_MINUTES = 1440;
 let snapshotTimer = null;
+
+// Replaced with a real file logger once the application is ready. Until then
+// (and if the log file cannot be written) these calls are harmless no-ops.
+let logger = { debug() {}, info() {}, warn() {}, error() {} };
+
+function logFilePath() {
+  const directory = process.env.QC_SCHEMATIC_LOG_DIR || app.getPath("logs");
+  return path.join(directory, LOG_FILE_NAME);
+}
+
+process.on("uncaughtException", (error) => {
+  logger.error("uncaughtException", error);
+  app.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandledRejection", reason);
+});
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -22,18 +43,101 @@ function createWindow() {
   });
 
   const id = win.webContents.id;
-  win.on("closed", () => filePaths.delete(id));
+  mainWindows.add(win);
+  logger.info("main window created", { id });
+  win.webContents.on("render-process-gone", (_event, details) => {
+    logger.error("render process gone", {
+      id,
+      reason: details && details.reason,
+      exitCode: details && details.exitCode
+    });
+  });
+  win.on("closed", () => {
+    filePaths.delete(id);
+    mainWindows.delete(win);
+    const editor = mainToEditor.get(id);
+    mainToEditor.delete(id);
+    if (editor && !editor.isDestroyed()) editor.close();
+    logger.info("main window closed", { id });
+  });
 
   win.loadFile(path.join(__dirname, "index.html"));
-  mainWindow = win;
   return win;
 }
 
-function sendToWindow(win, channel) {
-  const target = win && !win.isDestroyed() ? win : mainWindow;
-  if (target && !target.isDestroyed()) {
-    target.webContents.send(channel);
+// Menu actions addressed at any window must reach the window that owns the
+// circuit model: for an editor window that is the main window it is paired with.
+function resolveMainWindow(win) {
+  if (win && !win.isDestroyed()) {
+    const paired = editorToMain.get(win.webContents.id);
+    if (paired) {
+      if (!paired.isDestroyed()) return paired;
+    } else if (mainWindows.has(win)) {
+      return win;
+    }
   }
+  return anyMainWindow();
+}
+
+function anyMainWindow() {
+  for (const candidate of mainWindows) {
+    if (!candidate.isDestroyed()) return candidate;
+  }
+  return null;
+}
+
+function sendToWindow(win, channel) {
+  const target = resolveMainWindow(win);
+  if (target) target.webContents.send(channel);
+}
+
+function openEditorWindow(win) {
+  const main = resolveMainWindow(win);
+  if (!main) return null;
+  const existing = mainToEditor.get(main.webContents.id);
+  if (existing && !existing.isDestroyed()) {
+    existing.focus();
+    return existing;
+  }
+
+  const editor = new BrowserWindow({
+    width: 560,
+    height: 650,
+    minWidth: 360,
+    minHeight: 300,
+    parent: main,
+    title: "Editor",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  const mainId = main.webContents.id;
+  const editorId = editor.webContents.id;
+  mainToEditor.set(mainId, editor);
+  editorToMain.set(editorId, main);
+  logger.info("editor window created", { mainId, editorId });
+  editor.webContents.on("render-process-gone", (_event, details) => {
+    logger.error("render process gone", {
+      id: editorId,
+      reason: details && details.reason,
+      exitCode: details && details.exitCode
+    });
+  });
+  editor.on("closed", () => {
+    mainToEditor.delete(mainId);
+    editorToMain.delete(editorId);
+    logger.info("editor window closed", { mainId, editorId });
+  });
+
+  // The editor window is a focused editing surface; it keeps the native
+  // cut/copy/paste/undo shortcuts of editable content but shows no menu bar.
+  editor.removeMenu();
+
+  editor.loadFile(path.join(__dirname, "editor.html"));
+  return editor;
 }
 
 function snapshotPathFor(filePath) {
@@ -74,8 +178,8 @@ function scheduleSnapshotTimer(minutes) {
 }
 
 function activeWindow(win) {
-  const target = win && !win.isDestroyed() ? win : mainWindow;
-  return target && !target.isDestroyed() ? target : null;
+  if (win && !win.isDestroyed()) return win;
+  return anyMainWindow();
 }
 
 function editCommand(command) {
@@ -154,13 +258,46 @@ function buildMenu() {
         }
       ]
     },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        { type: "separator" },
+        {
+          label: "Windows",
+          submenu: [
+            {
+              label: "Editor",
+              click: (_item, win) => openEditorWindow(win)
+            }
+          ]
+        }
+      ]
+    },
     { role: "windowMenu" }
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 app.whenReady().then(() => {
+  logger = createLogger({ filePath: logFilePath() });
+  logger.info("application ready", {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node
+  });
+
   ipcMain.handle("ping", () => "pong from Electron");
 
   ipcMain.handle("export-qasm", async (event, code) => {
@@ -176,8 +313,10 @@ app.whenReady().then(() => {
     if (canceled || !filePath) return { saved: false };
     try {
       fs.writeFileSync(filePath, String(code ?? ""), "utf8");
+      logger.info("exported OpenQASM", { filePath });
       return { saved: true, filePath };
     } catch (error) {
+      logger.error("failed to export OpenQASM", { filePath, error: String(error) });
       return { saved: false, error: String(error) };
     }
   });
@@ -195,8 +334,10 @@ app.whenReady().then(() => {
     if (canceled || !chosen || !chosen.length) return { ok: false };
     try {
       const content = fs.readFileSync(chosen[0], "utf8");
+      logger.info("opened OpenQASM", { filePath: chosen[0] });
       return { ok: true, content, filePath: chosen[0] };
     } catch (error) {
+      logger.error("failed to open OpenQASM", { filePath: chosen[0], error: String(error) });
       return { ok: false, error: String(error) };
     }
   });
@@ -214,8 +355,10 @@ app.whenReady().then(() => {
     if (canceled || !filePath) return { saved: false };
     try {
       fs.writeFileSync(filePath, String(svg ?? ""), "utf8");
+      logger.info("exported SVG", { filePath });
       return { saved: true, filePath };
     } catch (error) {
+      logger.error("failed to export SVG", { filePath, error: String(error) });
       return { saved: false, error: String(error) };
     }
   });
@@ -240,8 +383,10 @@ app.whenReady().then(() => {
       fs.writeFileSync(filePath, String(code ?? ""), "utf8");
       filePaths.set(id, filePath);
       removeSnapshot(filePath);
+      logger.info("saved OpenQASM", { filePath });
       return { saved: true, filePath };
     } catch (error) {
+      logger.error("failed to save OpenQASM", { filePath, error: String(error) });
       return { saved: false, error: String(error) };
     }
   });
@@ -264,8 +409,10 @@ app.whenReady().then(() => {
       filePaths.set(id, filePath);
       removeSnapshot(filePath);
       if (previousPath && previousPath !== filePath) removeSnapshot(previousPath);
+      logger.info("saved OpenQASM as", { filePath });
       return { saved: true, filePath };
     } catch (error) {
+      logger.error("failed to save OpenQASM as", { filePath, error: String(error) });
       return { saved: false, error: String(error) };
     }
   });
@@ -277,14 +424,51 @@ app.whenReady().then(() => {
     const snapshotPath = snapshotPathFor(filePath);
     try {
       fs.writeFileSync(snapshotPath, String(code ?? ""), "utf8");
+      logger.debug("wrote snapshot", { filePath: snapshotPath });
       return { saved: true, filePath: snapshotPath };
     } catch (error) {
+      logger.error("failed to write snapshot", { filePath: snapshotPath, error: String(error) });
       return { saved: false, error: String(error) };
     }
   });
 
   ipcMain.handle("set-snapshot-period", (_event, minutes) => {
-    return { minutes: scheduleSnapshotTimer(minutes) };
+    const effective = scheduleSnapshotTimer(minutes);
+    logger.info("snapshot period set", { minutes: effective });
+    return { minutes: effective };
+  });
+
+  // Editor window <-> main window relay. The editor renderer never talks to the
+  // circuit model directly; the main process only forwards between paired
+  // windows and validates the payloads.
+  ipcMain.on("editor-change", (event, code) => {
+    if (typeof code !== "string") return;
+    const main = editorToMain.get(event.sender.id);
+    if (main && !main.isDestroyed()) {
+      logger.debug("editor change forwarded", { chars: code.length });
+      main.webContents.send("editor-change", code);
+    }
+  });
+
+  ipcMain.on("publish-code", (event, code) => {
+    if (typeof code !== "string") return;
+    const editor = mainToEditor.get(event.sender.id);
+    if (editor && !editor.isDestroyed()) editor.webContents.send("circuit-code", code);
+  });
+
+  ipcMain.handle("editor-ready", (event) => {
+    const main = editorToMain.get(event.sender.id);
+    if (main && !main.isDestroyed()) {
+      main.webContents.send("request-editor-code");
+      logger.info("editor ready");
+      return { ok: true };
+    }
+    logger.warn("editor ready without a paired main window");
+    return { ok: false };
+  });
+
+  app.on("child-process-gone", (_event, details) => {
+    logger.error("child process gone", details);
   });
 
   scheduleSnapshotTimer(DEFAULT_SNAPSHOT_MINUTES);
@@ -294,5 +478,10 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  logger.info("all windows closed");
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  logger.info("application quitting");
 });

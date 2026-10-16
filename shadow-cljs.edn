@@ -6,8 +6,15 @@
    :output-dir "public/js"
    :asset-path "js"
    :modules
-   {:main
-    {:entries [app.core]}}}
+   {:common
+    {:entries [app.dom]
+     :default true}
+    :main
+    {:entries [app.core]
+     :depends-on #{:common}}
+    :editor
+    {:entries [app.editor.core]
+     :depends-on #{:common}}}}
 
   :test
   {:target :node-test

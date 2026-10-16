@@ -29,5 +29,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onMenuSettings: (callback) => {
     ipcRenderer.on("menu-settings", () => callback());
   },
-  setSnapshotPeriod: (minutes) => ipcRenderer.invoke("set-snapshot-period", minutes)
+  setSnapshotPeriod: (minutes) => ipcRenderer.invoke("set-snapshot-period", minutes),
+  onEditorChange: (callback) => {
+    ipcRenderer.on("editor-change", (_event, code) => callback(code));
+  },
+  onRequestEditorCode: (callback) => {
+    ipcRenderer.on("request-editor-code", () => callback());
+  },
+  publishCode: (code) => ipcRenderer.send("publish-code", code),
+  onCircuitCode: (callback) => {
+    ipcRenderer.on("circuit-code", (_event, code) => callback(code));
+  },
+  sendEditorChange: (code) => ipcRenderer.send("editor-change", code),
+  editorReady: () => ipcRenderer.invoke("editor-ready")
 });

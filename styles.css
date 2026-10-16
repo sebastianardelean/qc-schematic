@@ -118,6 +118,13 @@ body {
   overflow: hidden;
 }
 
+/* The editor window contains only the code panel, so it fills the window. */
+#app.editor-window #code-panel {
+  flex: 1;
+  width: auto;
+  border-left: none;
+}
+
 .code-header {
   padding-bottom: 10px;
   display: flex;

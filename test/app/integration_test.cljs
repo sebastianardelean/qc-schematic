@@ -89,16 +89,14 @@
     (is (= 1 (.-length (.querySelectorAll (el "wires-layer") ".cwire"))))
     (is (= "3" (.-value (el "qubits"))))))
 
-(deftest editor-textarea-blur-integration-test
-  (testing "editing the textarea and blurring rebuilds the canvas and canonicalises the code"
+(deftest editor-change-integration-test
+  (testing "code sent from the editor window rebuilds the canvas and is canonicalised"
     (ui/init)
-    (let [editor (el "qasm")]
-      (set! (.-value editor) program)
-      (.dispatchEvent editor (ev "blur" {})))
+    (ui/on-editor-change! program)
     (is (= program-types (map :type (:gates @model/state))))
     ;; the barrier and measure each claim their own column
     (is (= [0 1 2 3] (map :col (:gates @model/state))))
-    (is (re-find #"barrier q\[0\], q\[1\], q\[2\];" (.-value (el "qasm"))))))
+    (is (re-find #"barrier q\[0\], q\[1\], q\[2\];" (ui/current-qasm)))))
 
 (deftest ui-export-integration-test
   (testing "the SVG produced from the live UI state contains every element"
@@ -132,9 +130,12 @@
       (aset api "saveSnapshot" (fn [_] nil))
       (aset api "onMenuSettings" (fn [_] nil))
       (aset api "setSnapshotPeriod" (fn [_] nil))
+      (aset api "onEditorChange" (fn [cb] (swap! calls assoc :editor-change cb)))
+      (aset api "onRequestEditorCode" (fn [cb] (swap! calls assoc :request-editor-code cb)))
+      (aset api "publishCode" (fn [code] (swap! calls assoc :published-code code)))
       (aset (.-window js/globalThis) "electronAPI" api)
       (ui/init)
-      (set! (.-value (el "qasm")) program)
+      (ui/on-editor-change! program)
       ((:save @calls))
       (is (string? @store))
       (is (re-find #"barrier q\[0\], q\[1\], q\[2\];" @store))
@@ -145,14 +146,13 @@
       (is (= program-types (map :type (:gates @model/state))))
       (is (= 3 (:qubits @model/state)))
       (is (= "3" (.-value (el "qubits"))))
-      (is (re-find #"barrier q\[0\], q\[1\], q\[2\];" (.-value (el "qasm"))))
+      (is (re-find #"barrier q\[0\], q\[1\], q\[2\];" (ui/current-qasm)))
       (aset (.-window js/globalThis) "electronAPI" nil))))
 
 (deftest invalid-edit-keeps-last-valid-integration-test
-  (testing "an invalid textarea edit is ignored while the canvas keeps the last good state"
+  (testing "an invalid edit from the editor window does not corrupt the circuit"
     (ui/init)
     (ui/apply-qasm! program)
-    (set! (.-value (el "qasm")) "qubit[1] q;\nbogus q[0];")
-    (.dispatchEvent (el "qasm") (ev "blur" {}))
+    (ui/on-editor-change! "qubit[1] q;\nbogus q[0];")
     (is (= program-types (map :type (:gates @model/state))))
-    (is (string/includes? (.-value (el "qasm")) "bogus"))))
+    (is (string/includes? (ui/current-qasm) "bogus"))))

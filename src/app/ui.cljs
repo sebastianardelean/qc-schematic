@@ -1,15 +1,18 @@
 (ns app.ui
-  (:require [clojure.string :as string]
+  (:require [app.dom :as dom :refer [create-el]]
             [app.model :as model]
             [app.qasm :as qasm]
-            [app.grammar :as grammar]
             [app.export :as export]
             [app.io :as io]))
 
 (def dragging (atom false))
 (def drag-type (atom nil))
 (def target-drag (atom nil))
-(def parse-timer (atom nil))
+
+;; Last OpenQASM text shown in the editor window (or the generated program
+;; until an editor window has sent its first change). The main window owns the
+;; circuit model; this is the text of record for saving and for republishing.
+(def editor-source (atom nil))
 
 (defn set-drag-active! [active]
   (reset! dragging active)
@@ -20,19 +23,6 @@
       (.remove classes "drag-active"))))
 
 (declare remove-gate! render-gates! render-code! build-wires!)
-
-(defn create-el [tag props & children]
-  (let [node (js/document.createElement (name tag))
-        style (.-style node)]
-    (doseq [[k v] props]
-      (cond
-        (= k :class) (set! (.-className node) v)
-        (= k :style) (set! (.-cssText style) v)
-        :else (.setAttribute node (name k) (str v))))
-    (doseq [c children]
-      (when c
-        (.appendChild node (if (string? c) (js/document.createTextNode c) c))))
-    node))
 
 (defn local-xy [event node]
   (let [rect (.getBoundingClientRect node)]
@@ -194,54 +184,10 @@
       (.appendChild layer (gate-node gate)))
     (layout-canvas!)))
 
-(defn editor-text []
-  (let [node (js/document.getElementById "qasm")]
-    (cond
-      (nil? node) (qasm/generate-qasm @model/state)
-      (= "TEXTAREA" (.-tagName node)) (.-value node)
-      :else (.-textContent node))))
-
-(defn line-number-string [text]
-  (let [lines (inc (count (re-seq #"\n" (or text ""))))]
-    (string/join "\n" (map inc (range lines)))))
-
-(defn sync-editor-scroll! []
-  (let [gutter (js/document.getElementById "line-numbers")
-        editor (js/document.getElementById "qasm")]
-    (when (and gutter editor)
-      (set! (.-scrollTop gutter) (.-scrollTop editor)))))
-
-(defn update-line-numbers! []
-  (when-let [gutter (js/document.getElementById "line-numbers")]
-    (set! (.-textContent gutter) (line-number-string (editor-text)))
-    (sync-editor-scroll!)))
-
-(defn update-validation! []
-  (when-let [status (js/document.getElementById "qasm-status")]
-    (let [result (grammar/validate (editor-text))
-          node (js/document.getElementById "qasm")
-          classes (.-classList status)]
-      (if (:ok result)
-        (do
-          (set! (.-textContent status) "valid")
-          (.remove classes "invalid")
-          (when node (.remove (.-classList node) "invalid")))
-        (let [errs (:errors result)
-              first (first errs)
-              more (dec (count errs))]
-          (set! (.-textContent status)
-                (str "invalid: line " (:line first) ": " (:message first)
-                     (when (pos? more) (str " (+" more " more)"))))
-          (.add classes "invalid")
-          (when node (.add (.-classList node) "invalid")))))))
-
 (defn render-code! []
-  (let [node (js/document.getElementById "qasm")]
-    (if (= "TEXTAREA" (.-tagName node))
-      (set! (.-value node) (qasm/generate-qasm @model/state))
-      (set! (.-textContent node) (qasm/generate-qasm @model/state))))
-  (update-line-numbers!)
-  (update-validation!))
+  (let [text (qasm/generate-qasm @model/state)]
+    (reset! editor-source text)
+    (io/publish-code! text)))
 
 (defn sync-qubits-input! []
   (when-let [input (js/document.getElementById "qubits")]
@@ -258,21 +204,18 @@
              :gates (:gates parsed))
       (build-wires!)
       (sync-qubits-input!)
-      (render-gates!))
-    (update-line-numbers!)
-    (update-validation!)))
-
-(defn schedule-parse! []
-  (when @parse-timer (js/clearTimeout @parse-timer))
-  (reset! parse-timer
-          (js/setTimeout
-           (fn []
-             (when-let [node (js/document.getElementById "qasm")]
-               (apply-qasm! (.-value node))))
-           250)))
+      (render-gates!))))
 
 (defn current-qasm []
-  (editor-text))
+  (or @editor-source (qasm/generate-qasm @model/state)))
+
+(defn publish-code! []
+  (io/publish-code! (current-qasm)))
+
+(defn on-editor-change! [text]
+  (when (string? text)
+    (reset! editor-source text)
+    (apply-qasm! text)))
 
 (defn add-gate! [gate]
   (swap! model/state model/add-gate-to-state gate)
@@ -406,51 +349,20 @@
                         {:id "preview"
                          :class "gate-preview hidden"})))
 
-(defn code-panel []
-  (let [editor (create-el :textarea
-                          {:id "qasm"
-                           :spellcheck "false"
-                           :autocapitalize "off"
-                           :autocomplete "off"
-                           :autocorrect "off"
-                           :wrap "off"})
-        gutter (create-el :div
-                          {:id "line-numbers"
-                           :class "line-numbers"
-                           :aria-hidden "true"})]
-    (.addEventListener editor "input"
-                       (fn [_]
-                         (schedule-parse!)
-                         (update-line-numbers!)))
-    (.addEventListener editor "scroll" (fn [_] (sync-editor-scroll!)))
-    (.addEventListener editor "blur" (fn [_] (apply-qasm! (.-value editor))))
-    (create-el :aside
-               {:id "code-panel"}
-               (create-el :div
-                          {:class "panel-section code-header"}
-                          (create-el :h2 {} "Editor")
-                          (create-el :span {:id "qasm-status" :class "code-hint"} "valid"))
-               (create-el :div
-                          {:class "code-body"}
-                          gutter
-                          editor))))
-
 (defn toggle-settings! []
   (when-let [panel (js/document.getElementById "settings-panel")]
     (.toggle (.-classList panel) "hidden")))
 
-(def dark-pref-key "qc-schematic-dark")
+(def dark-pref-key dom/dark-pref-key)
 
 (defn dark-enabled? []
-  (try
-    (= "true" (.getItem (.-localStorage js/window) dark-pref-key))
-    (catch js/Error _ false)))
+  (dom/dark-enabled?))
 
 (defn apply-dark! [enabled]
-  (.toggle (.-classList (.-body js/document)) "dark" enabled))
+  (dom/apply-dark! enabled))
 
 (defn set-dark! [enabled]
-  (apply-dark! enabled)
+  (dom/apply-dark! enabled)
   (try
     (.setItem (.-localStorage js/window) dark-pref-key (str enabled))
     (catch js/Error _ nil)))
@@ -523,13 +435,14 @@
                            (render-code!))
               :get-svg (fn [] (export/circuit->svg @model/state))
               :on-settings toggle-settings!
-              :snapshot-minutes (snapshot-minutes)}))
+              :snapshot-minutes (snapshot-minutes)
+              :on-editor-change on-editor-change!
+              :on-request-editor-code publish-code!}))
 
 (defn init []
   (let [root (js/document.getElementById "app")]
     (.appendChild root (operations-panel))
     (.appendChild root (canvas-panel))
-    (.appendChild root (code-panel))
     (.appendChild root (settings-panel)))
   (build-wires!)
   (let [canvas (js/document.getElementById "canvas")]

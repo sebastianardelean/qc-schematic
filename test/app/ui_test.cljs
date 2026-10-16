@@ -1,7 +1,6 @@
 (ns app.ui-test
   (:require [cljs.test :refer [deftest testing is use-fixtures]]
             ["jsdom" :refer [JSDOM]]
-            [clojure.string :as string]
             [app.model :as model]
             [app.ui :as ui]))
 
@@ -15,7 +14,8 @@
     (reset! model/state model/initial-state)
     (reset! ui/dragging false)
     (reset! ui/drag-type nil)
-    (reset! ui/target-drag nil)))
+    (reset! ui/target-drag nil)
+    (reset! ui/editor-source nil)))
 
 (use-fixtures :each (fn [f] (setup-dom) (f)))
 
@@ -50,8 +50,7 @@
   (ui/init)
   (is (some? (el "operations")))
   (is (some? (el "canvas")))
-  (is (some? (el "code-panel")))
-  (is (= "TEXTAREA" (.-tagName (el "qasm"))))
+  (is (nil? (el "code-panel")))
   (is (= 4 (.-length (.querySelectorAll (el "wires-layer") ".wire"))))
   (is (= 4 (.-length (.querySelectorAll (el "wires-layer") ".zero-state"))))
   (is (nil? (el "cbits")))
@@ -75,7 +74,7 @@
 (deftest render-code-test
   (ui/init)
   (ui/add-gate! {:type :h :wire 0 :col 0})
-  (is (re-find #"h q\[0\];" (.-value (el "qasm"))))
+  (is (re-find #"h q\[0\];" (ui/current-qasm)))
   (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".gate")))))
 
 (deftest remove-gate-test
@@ -102,6 +101,7 @@
   (ui/apply-qasm! "qubit[2] q;\nh q[0];\ncx q[0], q[1];")
   (is (= 2 (:qubits @model/state)))
   (is (= [:h :cx] (map :type (:gates @model/state))))
+  (is (some? (el "qubits"))) ; qubits input still exists
   (is (= "2" (.-value (el "qubits")))))
 
 (deftest apply-qasm-cbits-test
@@ -178,9 +178,9 @@
     (testing "classical bits default to one per qubit with a single canvas wire"
       (is (= (:qubits @model/state) (:cbits @model/state)))
       (is (= 1 (.-length (.querySelectorAll (el "wires-layer") ".cwire"))))
-      (is (re-find #"\bbit\[4\] c;" (.-value (el "qasm")))))
+      (is (re-find #"\bbit\[4\] c;" (ui/current-qasm)))))
     (testing "measurement links to the classical wire"
-      (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".measure-link")))))))
+      (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".measure-link"))))))
 
 (deftest barrier-drop-test
   (ui/init)
@@ -194,7 +194,7 @@
     (is (= :barrier (:type (first (:gates @model/state)))))
     (is (= [0 1 2 3] (:wires (first (:gates @model/state)))))
     (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".barrier-line"))))
-    (is (re-find #"barrier q\[0\], q\[1\], q\[2\], q\[3\];" (.-value (el "qasm"))))))
+    (is (re-find #"barrier q\[0\], q\[1\], q\[2\], q\[3\];" (ui/current-qasm)))))
 
 (deftest handle-qubits-input-test
   (ui/init)
@@ -210,59 +210,6 @@
     (.dispatchEvent gate-img (ev "dragend" {}))
     (is (nil? @ui/drag-type))
     (is (false? @ui/dragging))))
-
-(deftest code-panel-input-test
-  (ui/init)
-  (let [editor (el "qasm")]
-    (set! (.-value editor) "qubit[1] q;\nx q[0];")
-    (.dispatchEvent editor (ev "input" {}))
-    (.dispatchEvent editor (ev "blur" {}))
-    (is (= [:x] (map :type (:gates @model/state))))))
-
-(defn- line-count [s] (inc (count (re-seq #"\n" s))))
-
-(deftest line-numbers-test
-  (ui/init)
-  (let [editor (el "qasm")
-        gutter (el "line-numbers")]
-    (is (some? gutter))
-    (testing "the gutter mirrors the generated program"
-      (is (= "1" (first (string/split-lines (.-textContent gutter)))))
-      (is (= (line-count (.-value editor)) (line-count (.-textContent gutter)))))
-    (testing "editing the editor updates the gutter"
-      (set! (.-value editor) "qubit[2] q;\nh q[0];")
-      (.dispatchEvent editor (ev "input" {}))
-      (is (= "1\n2" (.-textContent gutter))))
-    (testing "a trailing newline adds a numbered line"
-      (set! (.-value editor) "a\n")
-      (.dispatchEvent editor (ev "input" {}))
-      (is (= "1\n2" (.-textContent gutter))))
-    (testing "vertical scrolling is mirrored onto the gutter"
-      (set! (.-scrollTop editor) 40)
-      (.dispatchEvent editor (ev "scroll" {}))
-      (is (= 40 (.-scrollTop gutter))))))
-
-(deftest line-number-string-test
-  (is (= "1" (ui/line-number-string "")))
-  (is (= "1\n2\n3" (ui/line-number-string "a\nb\nc")))
-  (is (= "1\n2" (ui/line-number-string "a\n"))))
-
-(deftest qasm-validation-status-test
-  (ui/init)
-  (let [editor (el "qasm")
-        status (el "qasm-status")]
-    (is (= "valid" (.-textContent status)))
-    (testing "a grammatical program is reported as valid"
-      (set! (.-value editor) "qubit[1] q;\nh q[0];")
-      (ui/apply-qasm! (.-value editor))
-      (is (= "valid" (.-textContent status)))
-      (is (false? (.contains (.-classList status) "invalid"))))
-    (testing "a malformed program is reported with a line number"
-      (set! (.-value editor) "qubit[1] q;\nh q[0]")
-      (ui/apply-qasm! (.-value editor))
-      (is (true? (.contains (.-classList status) "invalid")))
-      (is (re-find #"invalid: line 2" (.-textContent status)))
-      (is (true? (.contains (.-classList editor) "invalid"))))))
 
 (deftest setup-ipc-test
   (let [calls (atom {})
@@ -285,6 +232,9 @@
     (aset api "saveSnapshot" (fn [code] (swap! calls assoc :snapshot-out code)))
     (aset api "onMenuSettings" (fn [cb] (swap! calls assoc :settings cb)))
     (aset api "setSnapshotPeriod" (fn [minutes] (swap! calls assoc :snapshot-period minutes)))
+    (aset api "onEditorChange" (fn [cb] (swap! calls assoc :editor-change cb)))
+    (aset api "onRequestEditorCode" (fn [cb] (swap! calls assoc :request-editor-code cb)))
+    (aset api "publishCode" (fn [code] (swap! calls assoc :published-code code)))
     (aset (.-window js/globalThis) "electronAPI" api)
     (ui/init)
     (is (= ui/default-snapshot-minutes (:snapshot-period @calls)))
@@ -299,8 +249,10 @@
     (is (re-find #"h q\[0\];" (:saved-as @calls)))
     ((:snapshot @calls))
     (is (re-find #"h q\[0\];" (:snapshot-out @calls)))
-    ((:import @calls))
-    (is (= [:x] (map :type (:gates @model/state))))
+    ((:editor-change @calls) "qubit[1] q;\nz q[0];")
+    (is (= [:z] (map :type (:gates @model/state))))
+    ((:request-editor-code @calls))
+    (is (re-find #"z q\[0\];" (:published-code @calls)))
     (aset (.-window js/globalThis) "electronAPI" nil)))
 
 (deftest settings-toggle-test
@@ -348,3 +300,13 @@
       (set! (.-value input) "")
       (.dispatchEvent input (ev "change" {}))
       (is (= ui/default-snapshot-minutes (ui/snapshot-minutes))))))
+
+(deftest editor-source-sync-test
+  (ui/init)
+  (ui/add-gate! {:type :x :wire 0 :col 0})
+  (is (re-find #"x q\[0\];" (ui/current-qasm)))
+  (ui/on-editor-change! "qubit[2] q;\nh q[0];")
+  (is (= [:h] (map :type (:gates @model/state))))
+  (is (= 2 (:qubits @model/state)))
+  (is (re-find #"h q\[0\];" (ui/current-qasm)))
+  (is (nil? (js/document.getElementById "code-panel"))))

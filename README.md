@@ -11,6 +11,9 @@ sync, so you can work whichever way you prefer.
 
 - **Two-way editing** — drag gates on the canvas and the OpenQASM editor updates
   instantly; type in the editor and the canvas redraws.
+- **Two windows** — the main window holds the operations palette and canvas; the
+  OpenQASM editor opens in its own window from **View → Windows → Editor**. The
+  editor window has no menu bar, keeping the editing surface uncluttered.
 - **Gate palette** — H, X, Y, Z, S, T, S†, T†, Rx, Ry, Rz, P (phase), ID, CX
   (control–NOT), measurement, and barrier, with 1–12 qubits.
 - **Direct manipulation** — drag a gate onto a wire to place it, double-click to
@@ -26,6 +29,8 @@ sync, so you can work whichever way you prefer.
 - **Autosave snapshots** — periodic snapshots are written next to a file you have
   already saved, and cleaned up automatically when you save again.
 - **Dark mode** — configurable under Preferences → Settings.
+- **Activity log** — the main process writes a rotating log file (kept to 5 MB)
+  for troubleshooting.
 
 ## Prerequisites
 
@@ -56,8 +61,8 @@ $ npm start
 ```
 
 The QC Schematic window opens with a 4-qubit circuit. Drag a gate from the
-**Operations** palette on the left onto a wire, then watch the **Editor** panel on
-the right update.
+**Operations** palette on the left onto a wire, then open the editor window from
+**View → Windows → Editor** to see the OpenQASM update.
 
 > `npm start` runs Electron against the compiled bundle in `public/js`. Run
 > `npm run build:cljs` at least once before the first `npm start`, or use
@@ -89,10 +94,10 @@ them.
 
 ### Edit the OpenQASM
 
-The **Editor** panel contains the OpenQASM 3 source. Edit it and the canvas
-redraws after a short pause (or immediately when the editor loses focus). A
-status indicator shows `valid` when the grammar check passes, or the first error's
-line and column when it does not.
+Open the editor window from **View → Windows → Editor**. It contains the OpenQASM
+3 source. Edit it and the canvas redraws after a short pause (or immediately when
+the editor loses focus). A status indicator shows `valid` when the grammar check
+passes, or the first error's line and column when it does not.
 
 ```qasm
 OPENQASM 3;
@@ -147,6 +152,18 @@ Preferences → Settings, and removes the snapshot on the next save.
 The **Edit** menu (Undo, Redo, Cut, Copy, Paste, Paste and Match Style, Delete,
 Select All) operates on the focused editor.
 
+### Logs
+
+The main process writes a plain-text activity log to the platform log directory
+(`app.getPath("logs")`), in a file named `qc-schematic.log`. It records the
+application version, window lifecycle, file operations, and unexpected failures
+(uncaught exceptions, unhandled rejections, and crashed renderer or child
+processes). When the file reaches 5 MB it is rotated to `qc-schematic.log.1`, and
+the previous backup is replaced, so only 5 MB plus one generation is kept.
+
+To redirect the log elsewhere (for example when running tests), set the
+`QC_SCHEMATIC_LOG_DIR` environment variable to a directory.
+
 ## Testing
 
 Run the unit tests:
@@ -160,6 +177,12 @@ boundaries):
 
 ```console
 $ npm run test:integration
+```
+
+Run the log-file unit tests (plain Node, checking formatting and rotation):
+
+```console
+$ npm run test:logger
 ```
 
 Run the end-to-end (system) tests. These boot the real Electron application and
@@ -215,17 +238,21 @@ inspection, use `npm run pack`.
 
 ```
 src/app/
-  core.cljs      Entry point; boots the UI
-  ui.cljs        DOM rendering and interaction (palette, canvas, editor, settings)
-  model.cljs     Gate data, geometry, and application state
-  qasm.cljs      OpenQASM 3 parse and generate
-  grammar.cljs   OpenQASM 3 grammar validation
-  export.cljs    SVG rendering
-  io.cljs        Electron IPC wiring
-main.cjs         Electron main process: window, menus, file dialogs, snapshots
+  core.cljs        Entry point for the main window; boots the UI
+  editor.cljs      OpenQASM editor window (textarea, line numbers, validation)
+  editor/core.cljs Entry point for the editor window
+  ui.cljs          DOM rendering and interaction (palette, canvas, settings)
+  model.cljs       Gate data, geometry, and application state
+  qasm.cljs        OpenQASM 3 parse and generate
+  grammar.cljs     OpenQASM 3 grammar validation
+  export.cljs      SVG rendering
+  io.cljs          Electron IPC wiring
+  dom.cljs         Small DOM helpers and dark-mode preference
+main.cjs         Electron main process: windows, menus, file dialogs, snapshots
 preload.cjs      Context-isolated bridge between the renderer and main process
+logger.cjs       Rotating file logger used by the main process
 test/app/        Unit and integration specs
-test/system/     End-to-end Electron test
+test/system/     End-to-end Electron test and logger unit tests
 ```
 
 ## OpenQASM support

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Rotating activity log for the main process: application version, window
+  lifecycle, and file operations are recorded to the platform log directory,
+  with the file rotated once it reaches 5 MB (one backup kept).
+
+### Changed
+
+- The OpenQASM editor window no longer shows the application menu bar, leaving a
+  focused editing surface.
+
 ## [0.1.0-alpha] - 2026-10-15
 
 Initial release of QC Schematic, a desktop quantum circuit schematic editor with
