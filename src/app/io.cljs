@@ -27,7 +27,7 @@
 
 (defn setup!
   [{:keys [get-qasm on-import get-svg on-settings snapshot-minutes
-           on-editor-change on-request-editor-code]}]
+           on-editor-change on-request-editor-code on-undo on-redo]}]
   (when-let [api (electron-api)]
     (.onMenuExport api (fn [] (.exportQasm api (get-qasm))))
     (.onMenuImport api
@@ -41,6 +41,12 @@
     (.onMenuSaveAs api (fn [] (.saveQasmAs api (get-qasm))))
     (.onRequestSnapshot api (fn [] (.saveSnapshot api (get-qasm))))
     (.onMenuSettings api (fn [] (when on-settings (on-settings))))
+    (when on-undo
+      (when-let [f (.-onMenuUndo api)]
+        (f on-undo)))
+    (when on-redo
+      (when-let [f (.-onMenuRedo api)]
+        (f on-redo)))
     (when on-editor-change
       (.onEditorChange api on-editor-change))
     (when on-request-editor-code

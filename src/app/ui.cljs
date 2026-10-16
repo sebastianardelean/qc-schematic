@@ -68,6 +68,8 @@
             gate (first (filter #(= (:id %) id) gates))
             target (model/nearest-free-wire gates (:col gate) wire control qubits)
             target (if (= target control) (:target gate) target)]
+        (model/save-history!)
+        (model/clear-future!)
         (swap! model/state update :gates
                (fn [gs] (mapv #(if (= (:id %) id) (assoc % :target target) %) gs)))
         (render-gates!)
@@ -159,6 +161,8 @@
     node))
 
 (defn remove-gate! [id]
+  (model/save-history!)
+  (model/clear-future!)
   (swap! model/state model/remove-gate-from-state id)
   (render-gates!)
   (render-code!))
@@ -196,6 +200,8 @@
 (defn apply-qasm! [text]
   (let [parsed (qasm/parse-qasm text)]
     (when (:ok parsed)
+      (model/save-history!)
+      (model/clear-future!)
       (swap! model/state assoc
              :qubits (:qubits parsed)
              :cbits (or (:cbits parsed) 0)
@@ -218,6 +224,8 @@
     (apply-qasm! text)))
 
 (defn add-gate! [gate]
+  (model/save-history!)
+  (model/clear-future!)
   (swap! model/state model/add-gate-to-state gate)
   (swap! model/state model/ensure-measure-cbits)
   (build-wires!)
@@ -285,6 +293,8 @@
 
 (defn set-qubits! [raw]
   (when (and (number? raw) (not (js/isNaN raw)))
+    (model/save-history!)
+    (model/clear-future!)
     (swap! model/state model/set-qubits-in-state raw)
     (build-wires!)
     (render-gates!)
@@ -428,6 +438,20 @@
     (.addEventListener close "click" (fn [_] (toggle-settings!)))
     panel))
 
+(defn undo! []
+  (model/undo!)
+  (build-wires!)
+  (render-gates!)
+  (sync-qubits-input!)
+  (render-code!))
+
+(defn redo! []
+  (model/redo!)
+  (build-wires!)
+  (render-gates!)
+  (sync-qubits-input!)
+  (render-code!))
+
 (defn setup-ipc! []
   (io/setup! {:get-qasm current-qasm
               :on-import (fn [content]
@@ -437,7 +461,9 @@
               :on-settings toggle-settings!
               :snapshot-minutes (snapshot-minutes)
               :on-editor-change on-editor-change!
-              :on-request-editor-code publish-code!}))
+              :on-request-editor-code publish-code!
+              :on-undo undo!
+              :on-redo redo!}))
 
 (defn init []
   (let [root (js/document.getElementById "app")]

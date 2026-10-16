@@ -41,8 +41,33 @@
 (def min-canvas-width 480)
 
 (def initial-state {:qubits 4 :cbits 0 :next-id 0 :gates [] :defs {}})
-
 (def state (atom initial-state))
+(def history (atom []))
+(def future (atom []))
+
+(defn save-history! []
+  (swap! history conj @state))
+
+(defn can-undo? []
+  (pos? (count @history)))
+
+(defn can-redo? []
+  (pos? (count @future)))
+
+(defn undo! []
+  (when-let [prev (peek @history)]
+    (swap! future conj @state)
+    (swap! history pop)
+    (reset! state prev)))
+
+(defn redo! []
+  (when-let [next (peek @future)]
+    (swap! history conj @state)
+    (swap! future pop)
+    (reset! state next)))
+
+(defn clear-future! []
+  (reset! future []))
 
 (defn wire-y [wire]
   (+ top-pad (* wire wire-gap)))

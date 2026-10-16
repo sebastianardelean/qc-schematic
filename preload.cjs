@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onMenuSettings: (callback) => {
     ipcRenderer.on("menu-settings", () => callback());
   },
+  onMenuUndo: (callback) => {
+    ipcRenderer.on("menu-undo", () => callback());
+  },
+  onMenuRedo: (callback) => {
+    ipcRenderer.on("menu-redo", () => callback());
+  },
   setSnapshotPeriod: (minutes) => ipcRenderer.invoke("set-snapshot-period", minutes),
   onEditorChange: (callback) => {
     ipcRenderer.on("editor-change", (_event, code) => callback(code));

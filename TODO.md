@@ -62,3 +62,4 @@ cphase(π / 2) q[0], q[1];
 1. ~~The main window is currently splitted in 3. Instead, change it to be splitted in 2: operations and canvas. The editor window will be be launched separately by clicking on View->Windows->Editor.~~
 2. ~~Editor window shall not have toolbar~~
 3. ~~Add log to file with 5MB rotation~~
+4. ~~Edit menu doesn't work. Implement it such that I can undo, redo operations. Copy, cut, paste will work only in the editor.~~

@@ -232,8 +232,8 @@ function buildMenu() {
     {
       label: "Edit",
       submenu: [
-        { label: "Undo", accelerator: "CmdOrCtrl+Z", click: editCommand("undo") },
-        { label: "Redo", accelerator: "CmdOrCtrl+Shift+Z", click: editCommand("redo") },
+        { label: "Undo", accelerator: "CmdOrCtrl+Z", click: (_item, win) => sendToWindow(win, "menu-undo") },
+        { label: "Redo", accelerator: "CmdOrCtrl+Shift+Z", click: (_item, win) => sendToWindow(win, "menu-redo") },
         { type: "separator" },
         { label: "Cut", accelerator: "CmdOrCtrl+X", click: editCommand("cut") },
         { label: "Copy", accelerator: "CmdOrCtrl+C", click: editCommand("copy") },
