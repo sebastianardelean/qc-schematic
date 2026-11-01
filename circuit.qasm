@@ -1,0 +1,27 @@
+OPENQASM 3;
+include "stdgates.inc";
+
+qubit[4] q;
+bit[4] c;
+ccx q[0], q[1], q[2];
+cx q[0], q[1];
+barrier q[0], q[1], q[2], q[3];
+h q[0];
+x q[1];
+y q[2];
+z q[3];
+barrier q[0], q[1], q[2], q[3];
+s q[0];
+sdg q[1];
+t q[2];
+tdg q[3];
+barrier q[0], q[1], q[2], q[3];
+ry(pi/4) q[0];
+rz(pi/2) q[1];
+p(pi/2) q[2];
+id q[3];
+barrier q[0], q[1], q[2], q[3];
+measure q[0];
+measure q[1];
+measure q[2];
+measure q[3];
