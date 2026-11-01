@@ -63,3 +63,8 @@ cphase(π / 2) q[0], q[1];
 2. ~~Editor window shall not have toolbar~~
 3. ~~Add log to file with 5MB rotation~~
 4. ~~Edit menu doesn't work. Implement it such that I can undo, redo operations. Copy, cut, paste will work only in the editor.~~
+5. ~~In the exported circuit, the symbol of the Control Not gate is not the same as the symbol used on the canvas. The correct symbol for Control not is the one used to drag & drop on the canvas.~~
+6. ~~Add symbol for Toffoli gate (Control-Control-NOT)~~
+7. ~~On the exported circuit, the symbols of Control Not and Toffoli are now correct. But make them in black and white as the rest of the symbols.~~
+8. ~~On the exported circuit, for measurement, add the symbol that is used on the canvas, but in black and white.~~
+9. ~~Great, but on the exported circuit, use round corners for the squares that represent measurement operators. Like for the other gates.~~

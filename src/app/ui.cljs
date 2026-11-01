@@ -41,33 +41,57 @@
     (set! (.-top (.-style target-part)) (str (if control-at-top? span 0) "px"))
     (set! (.-height (.-style line)) (str span "px"))))
 
-(defn start-target-drag! [event {:keys [id wire target]}]
+(defn apply-ccx-layout! [container controls target]
+  (let [wires (conj (vec controls) target)
+        above (apply min wires)
+        below (apply max wires)
+        span (- (model/wire-y below) (model/wire-y above))
+        style (.-style container)
+        line (.. container (querySelector ".cx-line"))]
+    (set! (.-top style) (str (- (model/wire-y above) (/ model/gate-size 2)) "px"))
+    (set! (.-height style) (str (+ span model/gate-size) "px"))
+    (when line
+      (set! (.-height (.-style line)) (str span "px")))
+    (doseq [part (array-seq (.querySelectorAll container ".cx-part"))]
+      (let [wire (js/parseInt (.getAttribute part "data-wire") 10)]
+        (set! (.-top (.-style part))
+              (str (* (- wire above) model/wire-gap) "px"))))))
+
+(defn start-target-drag! [event {:keys [id type wire control target]}]
   (when-not @drag-type
     (.preventDefault event)
     (let [part (.-target event)]
       (try
         (.setPointerCapture part (.-pointerId event))
         (catch js/Error _))
-      (reset! target-drag {:id id :control wire :wire target}))))
+      (reset! target-drag {:id id
+                           :type type
+                           :controls (if (= type :ccx) [wire control] [wire])
+                           :wire target}))))
 
 (defn target-drag-move [event]
-  (when-let [{:keys [control] :as drag} @target-drag]
+  (when-let [{:keys [controls] :as drag} @target-drag]
     (let [[_ y] (local-xy event (js/document.getElementById "canvas"))
           qubits (:qubits @model/state)
-          wire (model/snap-wire y qubits)]
-      (when (and (not= wire control) (<= 0 wire (dec qubits)))
+          wire (model/snap-wire y qubits)
+          control-set (set controls)]
+      (when (and (not (contains? control-set wire)) (<= 0 wire (dec qubits)))
         (.preventDefault event)
         (reset! target-drag (assoc drag :wire wire))
-        (apply-cx-layout! (.-parentElement (.-currentTarget event)) control wire)))))
+        (let [container (.-parentElement (.-currentTarget event))]
+          (if (= :ccx (:type drag))
+            (apply-ccx-layout! container controls wire)
+            (apply-cx-layout! container (first controls) wire)))))))
 
 (defn target-drag-up [event]
-  (when-let [{:keys [id control wire]} @target-drag]
+  (when-let [{:keys [id controls wire]} @target-drag]
     (reset! target-drag nil)
-    (when (and wire (not= wire control))
+    (when (and wire (not (contains? (set controls) wire)))
       (let [{:keys [qubits gates]} @model/state
             gate (first (filter #(= (:id %) id) gates))
-            target (model/nearest-free-wire gates (:col gate) wire control qubits)
-            target (if (= target control) (:target gate) target)]
+            others (remove #(= (:id %) id) gates)
+            target (model/nearest-free-wire others (:col gate) wire controls qubits)
+            target (if (contains? (set controls) target) (:target gate) target)]
         (model/save-history!)
         (model/clear-future!)
         (swap! model/state update :gates
@@ -75,7 +99,28 @@
         (render-gates!)
         (render-code!)))))
 
-(defn gate-shape [{:keys [type wire target name]}]
+(defn cn-part [class src wire above title]
+  (create-el :img
+             (cond-> {:class (str "cx-part " class)
+                      :src src
+                      :data-wire wire
+                      :width model/gate-size
+                      :height model/gate-size
+                      :style (str "top:" (* (- wire above) model/wire-gap) "px;")}
+               title (assoc :title title))))
+
+(defn ccx-gate-shape [gate]
+  (let [{:keys [wire control target]} gate
+        {:keys [above span]} (model/gate-span gate)
+        line (create-el :div
+                        {:class "cx-line"
+                         :style (str "top:" (/ model/gate-size 2) "px;height:" span "px;")})]
+    [line
+     (cn-part "cx-control" "static/control.svg" wire above nil)
+     (cn-part "cx-control" "static/control.svg" control above nil)
+     (cn-part "cx-target" "static/target.svg" target above "Drag to move target")]))
+
+(defn gate-shape [{:keys [type wire target name] :as gate}]
   (case type
     :cx
     (let [{:keys [span control-at-top?]} (model/cx-geometry wire target)
@@ -97,6 +142,9 @@
                              :style (str "top:" (if control-at-top? span 0) "px;")})]
       [line control target])
 
+    :ccx
+    (ccx-gate-shape gate)
+
     :custom
     [(create-el :span {:class "custom-label"} name)]
 
@@ -115,10 +163,15 @@
     (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
          "width:" model/gate-size "px;height:" (+ (- (model/wire-y below) (model/wire-y above)) model/gate-size) "px;")))
 
-(defn outer-style [{:keys [type wire target col wires]}]
+(defn outer-style [{:keys [type wire target control col wires] :as gate}]
   (cond
     (= type :cx)
     (let [{:keys [above span]} (model/cx-geometry wire target)]
+      (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
+           "width:" model/gate-size "px;height:" (+ span model/gate-size) "px;"))
+
+    (= type :ccx)
+    (let [{:keys [above span]} (model/gate-span gate)]
       (str "left:" (model/gate-left col) "px;top:" (- (model/wire-y above) (/ model/gate-size 2)) "px;"
            "width:" model/gate-size "px;height:" (+ span model/gate-size) "px;"))
 
@@ -151,7 +204,7 @@
         (.appendChild node link)))
     (doseq [part (gate-shape gate)]
       (.appendChild node part))
-    (when (= type :cx)
+    (when (contains? #{:cx :ccx} type)
       (let [target-part (.. node (querySelector ".cx-target"))]
         (.addEventListener target-part "pointerdown" (fn [event] (start-target-drag! event gate)))
         (.addEventListener target-part "pointermove" target-drag-move)
@@ -224,13 +277,14 @@
     (apply-qasm! text)))
 
 (defn add-gate! [gate]
-  (model/save-history!)
-  (model/clear-future!)
-  (swap! model/state model/add-gate-to-state gate)
-  (swap! model/state model/ensure-measure-cbits)
-  (build-wires!)
-  (render-gates!)
-  (render-code!))
+  (when gate
+    (model/save-history!)
+    (model/clear-future!)
+    (swap! model/state model/add-gate-to-state gate)
+    (swap! model/state model/ensure-measure-cbits)
+    (build-wires!)
+    (render-gates!)
+    (render-code!)))
 
 (defn preview-node []
   (js/document.getElementById "preview"))
@@ -239,13 +293,14 @@
   (.add (.-classList (preview-node)) "hidden"))
 
 (defn show-preview! [type x y]
-  (let [target (model/target-cell @model/state type x y)
-        preview (preview-node)]
-    (set! (.-innerHTML preview) "")
-    (set! (.-cssText (.-style preview)) (outer-style target))
-    (doseq [part (gate-shape target)]
-      (.appendChild preview part))
-    (.remove (.-classList preview) "hidden")))
+  (if-let [target (model/target-cell @model/state type x y)]
+    (let [preview (preview-node)]
+      (set! (.-innerHTML preview) "")
+      (set! (.-cssText (.-style preview)) (outer-style target))
+      (doseq [part (gate-shape target)]
+        (.appendChild preview part))
+      (.remove (.-classList preview) "hidden"))
+    (hide-preview!)))
 
 (defn handle-dragover [event]
   (.preventDefault event)
@@ -261,7 +316,8 @@
           drop-type (keyword (.getData data-transfer "text/plain"))
           type (if (contains? model/gate-types drop-type) drop-type @drag-type)
           [x y] (local-xy event (.-currentTarget event))]
-      (add-gate! (model/target-cell @model/state type x y))))
+      (when-let [gate (model/target-cell @model/state type x y)]
+        (add-gate! gate))))
   (hide-preview!)
   (reset! drag-type nil)
   (set-drag-active! false))

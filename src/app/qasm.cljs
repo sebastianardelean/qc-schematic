@@ -45,9 +45,10 @@
   (- (count (re-seq #"\{" line))
      (count (re-seq #"\}" line))))
 
-(defn gate-qasm [{:keys [type name wire target wires angle]}]
+(defn gate-qasm [{:keys [type name wire target control wires angle]}]
   (cond
     (= type :cx) (str "cx q[" wire "], q[" target "];")
+    (= type :ccx) (str "ccx q[" wire "], q[" control "], q[" target "];")
     (= type :measure) (str "measure q[" wire "];")
     (= type :custom) (str name " " (string/join ", " (map #(str "q[" % "]") wires)) ";")
     (= type :barrier) (str "barrier"
@@ -170,6 +171,21 @@
                   (if valid
                     (let [candidate {:type :custom :name call-name :wire (first wires)
                                      :wires wires :target nil :angle nil}
+                          [col nextcol'] (assign-col nextcol (model/affected-wires candidate))]
+                      (recur (rest lines) qubits cbits nextcol' (inc id)
+                             (conj gates (assoc candidate :col col :id id)) defs nil 0 [] nil))
+                    {:ok false}))
+
+                (and call-name (= :ccx (get gate-qasm-name->type call-name)))
+                (let [wires (wire-indices args)
+                      valid (and qubits
+                                 (= 3 (count wires))
+                                 (= 3 (count (distinct wires)))
+                                 (every? #(<= 0 % (dec qubits)) wires))]
+                  (if valid
+                    (let [candidate {:type :ccx :wire (first wires)
+                                     :control (second wires) :target (nth wires 2)
+                                     :angle nil}
                           [col nextcol'] (assign-col nextcol (model/affected-wires candidate))]
                       (recur (rest lines) qubits cbits nextcol' (inc id)
                              (conj gates (assoc candidate :col col :id id)) defs nil 0 [] nil))

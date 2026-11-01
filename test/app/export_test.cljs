@@ -32,11 +32,39 @@
     (testing "vertical line spans exactly the two wires, not beyond"
       (is (re-find (re-pattern (str "y1=\"" (model/wire-y 0) "\"")
                                ) svg))
-      (is (re-find (re-pattern (str "y2=\"" (model/wire-y 2) "\"")) svg)))))
+      (is (re-find (re-pattern (str "y2=\"" (model/wire-y 2) "\"")) svg)))
+    (testing "the control and target use the same symbols as the canvas"
+      (is (= 2 (count (re-seq #"<circle" svg))))
+      (is (re-find (re-pattern (str "fill=\"" export/gate-color "\"")) svg))
+      (is (re-find #"r=\"11\" fill=\"none\"" svg))
+      (is (not (re-find #"r=\"6\"" svg))))
+    (testing "the symbol is monochrome"
+      (is (not (re-find #"#678efa" svg))))))
+
+(deftest circuit-svg-ccx-test
+  (let [svg (export/circuit->svg {:qubits 3
+                                  :gates [{:type :ccx :wire 0 :control 1 :target 2
+                                           :col 0 :id 0}]})]
+    (testing "two controls and one target are drawn"
+      (is (= 3 (count (re-seq #"<circle" svg))))
+      (is (= 2 (count (re-seq #"r=\"10\"" svg))))
+      (is (re-find #"r=\"11\" fill=\"none\"" svg)))
+    (testing "the vertical line spans exactly the three wires"
+      (is (re-find (re-pattern (str "y1=\"" (model/wire-y 0) "\"")) svg))
+      (is (re-find (re-pattern (str "y2=\"" (model/wire-y 2) "\"")) svg)))
+    (testing "the symbol is monochrome"
+      (is (not (re-find #"#678efa" svg))))))
 
 (deftest circuit-svg-measure-test
   (let [svg (export/circuit->svg {:qubits 1 :gates [{:type :measure :wire 0 :col 0 :id 0}]})]
-    (is (re-find #">M<" svg))))
+    (testing "the measurement symbol matches the canvas"
+      (is (re-find #"<rect" svg))
+      (is (re-find #"rx=\"6\"" svg))
+      (is (re-find #"<path d=\"M " svg))
+      (is (re-find #"r=\"2\"" svg))
+      (is (not (re-find #">M<" svg))))
+    (testing "the symbol is monochrome"
+      (is (not (re-find #"#678efa" svg))))))
 
 (deftest circuit-svg-barrier-test
   (let [svg (export/circuit->svg {:qubits 3

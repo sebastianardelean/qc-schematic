@@ -6,6 +6,7 @@
   (testing "known type returns its asset"
     (is (= "static/hadamard.svg" (model/gate-src :h)))
     (is (= "static/x.svg" (model/gate-src :x)))
+    (is (= "static/ccx.svg" (model/gate-src :ccx)))
     (is (= "static/measure.svg" (model/gate-src :measure)))
     (is (= "static/barrier.svg" (model/gate-src :barrier))))
   (testing "unknown type falls back"
@@ -39,9 +40,17 @@
 (deftest gate-wires-test
   (is (= [1] (model/gate-wires {:type :x :wire 1})))
   (is (= '(1 2 3) (model/gate-wires {:type :cx :wire 1 :target 3})))
+  (is (= '(0 1 2) (model/gate-wires {:type :ccx :wire 0 :control 1 :target 2})))
+  (is (= '(1 2 3) (model/gate-wires {:type :ccx :wire 3 :control 1 :target 2})))
   (is (= [2 4] (model/gate-wires {:type :custom :wires [2 4]})))
   (is (= [0 1 2] (model/gate-wires {:type :barrier :wire 0 :wires [0 1 2]})))
   (is (= [2] (model/gate-wires {:type :measure :wire 2}))))
+
+(deftest gate-span-test
+  (is (= {:above 0 :below 2 :span (* 2 model/wire-gap)}
+         (model/gate-span {:type :ccx :wire 0 :control 1 :target 2})))
+  (is (= {:above 1 :below 3 :span (* 2 model/wire-gap)}
+         (model/gate-span {:type :ccx :wire 3 :control 1 :target 2}))))
 
 (deftest target-cell-measure-test
   (let [st {:qubits 4 :gates []}
@@ -60,6 +69,12 @@
     (is (true? (model/blocks-cell? cx 1 1)))
     (is (true? (model/blocks-cell? cx 3 1)))
     (is (false? (model/blocks-cell? cx 4 1))))
+  (let [ccx {:type :ccx :wire 0 :control 2 :target 3 :col 1}]
+    (is (true? (model/blocks-cell? ccx 0 1)))
+    (is (true? (model/blocks-cell? ccx 1 1)))
+    (is (true? (model/blocks-cell? ccx 2 1)))
+    (is (true? (model/blocks-cell? ccx 3 1)))
+    (is (false? (model/blocks-cell? ccx 4 1))))
   (let [custom {:type :custom :wires [1 3] :col 0}]
     (is (true? (model/blocks-cell? custom 3 0)))
     (is (not (model/blocks-cell? custom 2 0))))
@@ -75,7 +90,8 @@
 
 (deftest affected-wires-test
   (is (= [1] (model/affected-wires {:type :h :wire 1})))
-  (is (= [1 2 3] (model/affected-wires {:type :cx :wire 3 :target 1}))))
+  (is (= [1 2 3] (model/affected-wires {:type :cx :wire 3 :target 1})))
+  (is (= [0 1 2] (model/affected-wires {:type :ccx :wire 2 :control 0 :target 1}))))
 
 (deftest free-col-test
   (let [gates [{:type :x :wire 0 :col 0}]]
@@ -105,6 +121,13 @@
   (testing "cx gets an adjacent target"
     (let [cell (model/target-cell {:qubits 4 :gates []} :cx model/origin-x model/top-pad)]
       (is (= 1 (:target cell)))))
+  (testing "ccx gets a second control and a distinct target"
+    (let [cell (model/target-cell {:qubits 4 :gates []} :ccx model/origin-x model/top-pad)]
+      (is (= 0 (:wire cell)))
+      (is (= 1 (:control cell)))
+      (is (= 2 (:target cell)))))
+  (testing "ccx needs three qubits"
+    (is (nil? (model/target-cell {:qubits 2 :gates []} :ccx model/origin-x model/top-pad))))
   (testing "placed gate avoids occupied column"
     (let [st {:qubits 4 :gates [{:type :x :wire 0 :col 0 :id 0}]}
           cell (model/target-cell st :h model/origin-x model/top-pad)]
@@ -125,7 +148,10 @@
     (is (= 2 (model/nearest-free-wire [] 0 2 0 4))))
   (testing "occupied span moves target"
     (let [gates [{:type :x :wire 2 :col 0}]]
-      (is (= 1 (model/nearest-free-wire gates 0 2 0 4))))))
+      (is (= 1 (model/nearest-free-wire gates 0 2 0 4)))))
+  (testing "multiple controls are avoided"
+    (is (= 3 (model/nearest-free-wire [] 0 3 [0 1] 4)))
+    (is (= 2 (model/nearest-free-wire [] 0 1 [0 1] 4)))))
 
 (deftest canvas-size-test
   (let [{:keys [width height]} (model/canvas-size {:qubits 4 :gates []})]

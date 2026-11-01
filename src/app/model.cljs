@@ -15,11 +15,12 @@
    :p {:qasm "p" :src "static/phase.svg" :angle "pi/2"}
    :id {:qasm "id" :src "static/identity.svg"}
    :cx {:qasm "cx" :src "static/cx.svg"}
+   :ccx {:qasm "ccx" :src "static/ccx.svg"}
    :measure {:qasm "measure" :src "static/measure.svg"}
    :barrier {:qasm "barrier" :src "static/barrier.svg"}})
 
 (def palette-types
-  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx :measure :barrier])
+  [:h :x :y :z :s :t :sdg :tdg :rx :ry :rz :p :id :cx :ccx :measure :barrier])
 
 (defn gate-src [type]
   (get-in gate-types [type :src] "static/hadamard.svg"))
@@ -97,22 +98,36 @@
 (defn snap-col [x]
   (int (max 0 (Math/round (/ (- x origin-x) col-gap)))))
 
-(defn gate-wires [{:keys [type wire target wires]}]
+(defn wire-span [wires]
+  (let [lo (apply min wires)
+        hi (apply max wires)]
+    (range lo (inc hi))))
+
+(defn cn-wires [{:keys [type wire control target]}]
+  (case type
+    :cx [wire target]
+    :ccx [wire control target]
+    nil))
+
+(defn gate-wires [{:keys [type wire wires] :as gate}]
   (cond
-    (= type :cx) (range (min wire target) (inc (max wire target)))
+    (contains? #{:cx :ccx} type)
+    (let [ws (remove nil? (cn-wires gate))]
+      (if (seq ws) (wire-span ws) [wire]))
     wires wires
     :else [wire]))
 
+(defn gate-span [gate]
+  (let [wires (gate-wires gate)
+        above (apply min wires)
+        below (apply max wires)]
+    {:above above
+     :below below
+     :span (- (wire-y below) (wire-y above))}))
+
 (defn blocks-cell? [gate wire col]
   (and (= (:col gate) col)
-       (or (= (:wire gate) wire)
-           (= (:target gate) wire)
-           (and (= (:type gate) :cx)
-                (< (min (:wire gate) (:target gate))
-                   wire
-                   (max (:wire gate) (:target gate))))
-           (and (contains? #{:custom :barrier} (:type gate))
-                (some #(= % wire) (gate-wires gate))))))
+       (boolean (some #(= % wire) (gate-wires gate)))))
 
 (defn blocked? [gates wire col]
   (boolean (some #(blocks-cell? % wire col) gates)))
@@ -124,7 +139,7 @@
   (every? #(not (blocked? gates % col)) wires))
 
 (defn free-wire-span? [gates col control wire]
-  (every? #(not (blocked? gates % col)) (range (min control wire) (inc (max control wire)))))
+  (free-col? gates col (wire-span [control wire])))
 
 (defn nearest-free-col [gates col wires]
   (if (free-col? gates col wires)
@@ -138,15 +153,34 @@
     (inc control)
     (dec control)))
 
+(defn- nearest-unoccupied-wire [wire qubits taken]
+  (let [candidates (mapcat (fn [d] [(+ wire d) (- wire d)]) (range 1 qubits))]
+    (or (first (filter #(and (>= % 0)
+                             (< % qubits)
+                             (not (contains? taken %)))
+                       candidates))
+        wire)))
+
+(defn ccx-wires [wire qubits]
+  (let [control (nearest-unoccupied-wire wire qubits #{wire})
+        target (nearest-unoccupied-wire wire qubits #{wire control})]
+    {:control control :target target}))
+
 (defn target-cell
   [{:keys [qubits gates] :as _state} type x y]
-  (let [wire (snap-wire y qubits)
-        target (when (= type :cx) (cx-target wire qubits))
-        candidate (cond-> {:type type :wire wire :target target
-                           :angle (get-in gate-types [type :angle])}
-                    (= type :barrier) (assoc :wires (vec (range qubits))))
-        col (nearest-free-col gates (snap-col x) (affected-wires candidate))]
-    (assoc candidate :col col)))
+  (when (or (not= type :ccx) (>= qubits 3))
+    (let [wire (snap-wire y qubits)
+          ccx (when (= type :ccx) (ccx-wires wire qubits))
+          target (case type
+                   :cx (cx-target wire qubits)
+                   :ccx (:target ccx)
+                   nil)
+          candidate (cond-> {:type type :wire wire :target target
+                             :angle (get-in gate-types [type :angle])}
+                      (= type :ccx) (assoc :control (:control ccx))
+                      (= type :barrier) (assoc :wires (vec (range qubits))))
+          col (nearest-free-col gates (snap-col x) (affected-wires candidate))]
+      (assoc candidate :col col))))
 
 (defn cx-geometry [control target]
   (let [above (min control target)
@@ -156,16 +190,22 @@
      :span (- (wire-y below) (wire-y above))
      :control-at-top? (< control target)}))
 
-(defn nearest-free-wire [gates col desired control qubits]
-  (if (and (not= desired control) (free-wire-span? gates col control desired))
-    desired
-    (let [candidates (mapcat (fn [d] [(+ desired d) (- desired d)]) (range 1 qubits))]
-      (or (first (filter #(and (>= % 0)
-                               (< % qubits)
-                               (not= % control)
-                               (free-wire-span? gates col control %))
-                         candidates))
-          desired))))
+(defn nearest-free-wire [gates col desired controls qubits]
+  (let [control-set (cond
+                      (nil? controls) #{}
+                      (coll? controls) (set controls)
+                      :else #{controls})
+        span (fn [target] (wire-span (conj (vec control-set) target)))]
+    (if (and (not (contains? control-set desired))
+             (free-col? gates col (span desired)))
+      desired
+      (let [candidates (mapcat (fn [d] [(+ desired d) (- desired d)]) (range 1 qubits))]
+        (or (first (filter #(and (>= % 0)
+                                 (< % qubits)
+                                 (not (contains? control-set %))
+                                 (free-col? gates col (span %)))
+                           candidates))
+            desired)))))
 
 (defn add-gate-to-state [current gate]
   (-> current

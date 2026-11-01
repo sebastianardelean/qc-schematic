@@ -164,6 +164,41 @@
         (is (nil? @ui/target-drag))
         (is (= 2 (:target (first (:gates @model/state)))))))))
 
+(deftest ccx-drop-test
+  (ui/init)
+  (reset! ui/drag-type :ccx)
+  (ui/set-drag-active! true)
+  (let [canvas (el "canvas")
+        drop (ev "drop" {"dataTransfer" (data-transfer (js-obj))
+                         "clientX" 100 "clientY" 50})]
+    (aset drop "currentTarget" canvas)
+    (.dispatchEvent canvas drop)
+    (let [gate (first (:gates @model/state))]
+      (is (= :ccx (:type gate)))
+      (is (= [0 1 2] [(:wire gate) (:control gate) (:target gate)]))
+      (is (= 2 (.-length (.querySelectorAll (el "gates-layer") ".cx-control"))))
+      (is (= 1 (.-length (.querySelectorAll (el "gates-layer") ".cx-target"))))
+      (is (re-find #"ccx q\[0\], q\[1\], q\[2\];" (ui/current-qasm))))))
+
+(deftest ccx-target-drag-test
+  (ui/init)
+  (ui/add-gate! (model/target-cell @model/state :ccx model/origin-x model/top-pad))
+  (let [gate-node (first (array-seq (.querySelectorAll (el "gates-layer") ".gate")))
+        target-part (.querySelector gate-node ".cx-target")
+        gate (first (:gates @model/state))
+        down (ev "pointerdown" {"pointerId" 1 "target" target-part})]
+    (ui/start-target-drag! down gate)
+    (is (= (:id gate) (:id @ui/target-drag)))
+    (is (= [0 1] (:controls @ui/target-drag)))
+    (let [move (ev "pointermove" {"clientX" 100 "clientY" (model/wire-y 3)
+                                  "currentTarget" target-part})]
+      (aset move "currentTarget" target-part)
+      (.dispatchEvent target-part move)
+      (is (= 3 (:wire @ui/target-drag)))
+      (ui/target-drag-up (ev "pointerup" {}))
+      (is (nil? @ui/target-drag))
+      (is (= 3 (:target (first (:gates @model/state))))))))
+
 (deftest measure-drop-test
   (ui/init)
   (reset! ui/drag-type :measure)

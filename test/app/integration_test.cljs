@@ -106,7 +106,7 @@
       (is (re-find #"<svg" svg))
       (is (re-find #">H<" svg))
       (is (re-find #"<circle" svg))
-      (is (re-find #">M<" svg))
+      (is (re-find #"<path d=\"M " svg))
       (is (re-find #"stroke-dasharray" svg)))))
 
 (deftest bridge-save-open-integration-test

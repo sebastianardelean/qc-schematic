@@ -15,9 +15,9 @@ sync, so you can work whichever way you prefer.
   OpenQASM editor opens in its own window from **View → Windows → Editor**. The
   editor window has no menu bar, keeping the editing surface uncluttered.
 - **Gate palette** — H, X, Y, Z, S, T, S†, T†, Rx, Ry, Rz, P (phase), ID, CX
-  (control–NOT), measurement, and barrier, with 1–12 qubits.
+  (control–NOT), CCX (Toffoli), measurement, and barrier, with 1–12 qubits.
 - **Direct manipulation** — drag a gate onto a wire to place it, double-click to
-  remove it, and drag a CX gate's target between wires.
+  remove it, and drag a CX or CCX gate's target between wires.
 - **Custom gates** — `gate` definitions in OpenQASM are parsed and drawn as
   labelled rectangles spanning the wires they act on.
 - **Measurement and classical bits** — adding a measurement creates the classical
@@ -90,7 +90,7 @@ them.
 1. Set the **Number of qubits** (1–12) under the palette.
 2. Drag a gate from the palette onto a wire. A preview shows where it will land.
 3. Double-click a gate to remove it.
-4. For a CX gate, drag the circle on the target wire to move the target.
+4. For a CX or CCX gate, drag the circle on the target wire to move the target.
 
 ### Edit the OpenQASM
 

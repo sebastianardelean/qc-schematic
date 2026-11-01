@@ -8,6 +8,7 @@
   (is (= "rz(pi/4) q[1];" (qasm/gate-qasm {:type :rz :wire 1 :angle "pi/4"})))
   (is (= "rz(pi/2) q[1];" (qasm/gate-qasm {:type :rz :wire 1})))
   (is (= "cx q[0], q[2];" (qasm/gate-qasm {:type :cx :wire 0 :target 2})))
+  (is (= "ccx q[0], q[1], q[2];" (qasm/gate-qasm {:type :ccx :wire 0 :control 1 :target 2})))
   (is (= "mygate q[0], q[2];" (qasm/gate-qasm {:type :custom :name "mygate" :wires [0 2]})))
   (is (= "barrier q[0], q[1];" (qasm/gate-qasm {:type :barrier :wires [0 1]})))
   (is (= "barrier;" (qasm/gate-qasm {:type :barrier :wires []})))
@@ -53,6 +54,27 @@
       (is (= :cx (:type cx)))
       (is (= 0 (:wire cx)))
       (is (= 2 (:target cx))))))
+
+(deftest parse-ccx-test
+  (let [res (qasm/parse-qasm "OPENQASM 3;\ninclude \"stdgates.inc\";\nqubit[3] q;\nccx q[0], q[1], q[2];\n")]
+    (is (true? (:ok res)))
+    (let [g (first (:gates res))]
+      (is (= :ccx (:type g)))
+      (is (= 0 (:wire g)))
+      (is (= 1 (:control g)))
+      (is (= 2 (:target g)))))
+  (testing "duplicate operands are rejected"
+    (is (false? (:ok (qasm/parse-qasm "qubit[3] q;\nccx q[0], q[1], q[1];")))))
+  (testing "out of range operands are rejected"
+    (is (false? (:ok (qasm/parse-qasm "qubit[2] q;\nccx q[0], q[1], q[2];")))))
+  (testing "too few operands are rejected"
+    (is (false? (:ok (qasm/parse-qasm "qubit[3] q;\nccx q[0], q[1];"))))))
+
+(deftest generate-qasm-ccx-test
+  (let [text (qasm/generate-qasm {:qubits 3
+                                  :gates [{:type :ccx :wire 0 :control 1 :target 2
+                                           :col 0 :id 0}]})]
+    (is (re-find #"ccx q\[0\], q\[1\], q\[2\];" text))))
 
 (deftest parse-bit-declaration-test
   (let [res (qasm/parse-qasm "qubit[2] q;\nbit[2] c;\nmeasure q[0];")]
@@ -213,4 +235,11 @@
     (is (true? (:ok round)))
     (is (= 3 (:qubits round)))
     (is (= (count (:gates st)) (count (:gates round))))
-    (is (= [:h :rx :cx] (map :type (:gates round))))))
+    (is (= [:h :rx :cx] (map :type (:gates round)))))
+  (testing "Toffoli round trip"
+    (let [st {:qubits 3 :gates [{:type :ccx :wire 0 :control 1 :target 2 :col 0 :id 0}]
+              :defs {}}
+          round (qasm/parse-qasm (qasm/generate-qasm st))]
+      (is (true? (:ok round)))
+      (is (= [{:type :ccx :wire 0 :control 1 :target 2 :col 0 :id 0 :angle nil}]
+             (:gates round))))))

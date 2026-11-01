@@ -12,11 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rotating activity log for the main process: application version, window
   lifecycle, and file operations are recorded to the platform log directory,
   with the file rotated once it reaches 5 MB (one backup kept).
+- CCX (Toffoli) gate: palette entry, canvas symbol, target dragging, OpenQASM
+  import/export (`ccx q[a], q[b], q[c];`) and SVG export.
 
 ### Changed
 
 - The OpenQASM editor window no longer shows the application menu bar, leaving a
   focused editing surface.
+- The exported CNOT and CCX symbols now match the canvas in black and white:
+  filled control dots and crossed target rings.
+- SVG export now draws the canvas measurement symbol with rounded corners
+  consistent with the other gate symbols, instead of a labelled gate box.
 
 ## [0.1.0-alpha] - 2026-10-15
 
