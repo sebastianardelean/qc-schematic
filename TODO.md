@@ -68,3 +68,7 @@ cphase(π / 2) q[0], q[1];
 7. ~~On the exported circuit, the symbols of Control Not and Toffoli are now correct. But make them in black and white as the rest of the symbols.~~
 8. ~~On the exported circuit, for measurement, add the symbol that is used on the canvas, but in black and white.~~
 9. ~~Great, but on the exported circuit, use round corners for the squares that represent measurement operators. Like for the other gates.~~
+
+## For version 0.2.0-alpha
+
+1. 
