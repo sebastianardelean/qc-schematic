@@ -1,0 +1,24 @@
+[package]
+name = "qc-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Quantum circuit schematic editor (egui) for qc-schematic"
+
+[[bin]]
+name = "qc-schematic"
+path = "src/main.rs"
+
+[dependencies]
+qc-core.workspace = true
+eframe = { version = "0.33", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+    "wayland",
+    "x11",
+] }
+egui = "0.33"
+rfd = "0.15"
+arboard = "3"
