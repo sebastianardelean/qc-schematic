@@ -10,6 +10,9 @@ description = "Quantum circuit schematic editor (egui) for qc-schematic"
 name = "qc-schematic"
 path = "src/main.rs"
 
+[build-dependencies]
+winresource = { version = "0.1", default-features = false }
+
 [dependencies]
 qc-core.workspace = true
 eframe = { version = "0.33", default-features = false, features = [
