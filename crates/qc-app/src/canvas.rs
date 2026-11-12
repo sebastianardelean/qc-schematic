@@ -14,7 +14,15 @@ pub fn show(app: &mut QcApp, ui: &mut egui::Ui) {
     let height = (ch as f32).max(avail.y);
     let theme = app.theme();
 
+    route_wheel(ui, cw as f32 > avail.x, ch as f32 > avail.y);
+
+    // egui's default scroll bars are floating and fully transparent until
+    // hovered, which makes them invisible on the canvas. Use solid, always
+    // visible bars so both axes are discoverable.
+    ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+
     egui::ScrollArea::both()
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .auto_shrink([false, false])
         .scroll_source(egui::scroll_area::ScrollSource {
             scroll_bar: true,
@@ -62,7 +70,7 @@ pub fn show(app: &mut QcApp, ui: &mut egui::Ui) {
                     let y1 = origin.y + model::cwire_y(0, qubits) as f32;
                     painter.add(Shape::dashed_line(
                         &[Pos2::new(x, y0), Pos2::new(x, y1)],
-                        Stroke::new(1.5, paint::GATE_STROKE),
+                        Stroke::new(1.5, theme.gate_label()),
                         4.0,
                         3.0,
                     ));
@@ -83,6 +91,31 @@ pub fn show(app: &mut QcApp, ui: &mut egui::Ui) {
 
 /// Draw the `|0>` ket marker at the left of a wire, reproducing the vector
 /// geometry of `static/zero-state.svg` (46x46, centred on the wire).
+/// Route the mouse wheel to whichever axis overflows. The canvas is a
+/// horizontal timeline, so a plain wheel pans horizontally when the circuit is
+/// wider than the viewport; Shift+wheel pans vertically (and vice versa when
+/// only the vertical axis overflows).
+fn route_wheel(ui: &egui::Ui, over_h: bool, over_v: bool) {
+    let ctx = ui.ctx();
+    if !ui.rect_contains_pointer(ui.max_rect()) {
+        return;
+    }
+    let shift = ctx.input(|i| i.modifiers.shift);
+    let to_horizontal = if shift { !over_v } else { over_h };
+    let to_vertical = if shift { over_v } else { !over_h };
+    if to_horizontal {
+        ctx.input_mut(|i| {
+            i.smooth_scroll_delta.x += i.smooth_scroll_delta.y;
+            i.smooth_scroll_delta.y = 0.0;
+        });
+    } else if to_vertical {
+        ctx.input_mut(|i| {
+            i.smooth_scroll_delta.y += i.smooth_scroll_delta.x;
+            i.smooth_scroll_delta.x = 0.0;
+        });
+    }
+}
+
 fn zero_marker(
     painter: &egui::Painter,
     origin: Pos2,

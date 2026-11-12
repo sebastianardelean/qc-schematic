@@ -82,40 +82,34 @@ pub fn paint_gate(
             let g = cx_geometry(gate.wire, gate.target.unwrap_or(gate.wire));
             let y1 = origin.y + model::wire_y(g.above) as f32;
             let y2 = origin.y + model::wire_y(g.below) as f32;
-            painter.line_segment(
-                [Pos2::new(cx, y1), Pos2::new(cx, y2)],
-                stroke(a(GATE_COLOR), 2.5),
-            );
+            painter.line_segment([Pos2::new(cx, y1), Pos2::new(cx, y2)], stroke(lc, 2.5));
             control_dot(
                 painter,
                 Pos2::new(cx, origin.y + model::wire_y(gate.wire) as f32),
-                a(GATE_COLOR),
+                lc,
             );
             let ty = origin.y + model::wire_y(gate.target.unwrap_or(gate.wire)) as f32;
-            target_cross(painter, Pos2::new(cx, ty), a(GATE_COLOR));
+            target_cross(painter, Pos2::new(cx, ty), lc);
         }
         GateKind::Ccx => {
             let span = gate_span(gate);
             let y1 = origin.y + model::wire_y(span.above) as f32;
             let y2 = origin.y + model::wire_y(span.below) as f32;
-            painter.line_segment(
-                [Pos2::new(cx, y1), Pos2::new(cx, y2)],
-                stroke(a(GATE_COLOR), 2.5),
-            );
+            painter.line_segment([Pos2::new(cx, y1), Pos2::new(cx, y2)], stroke(lc, 2.5));
             control_dot(
                 painter,
                 Pos2::new(cx, origin.y + model::wire_y(gate.wire) as f32),
-                a(GATE_COLOR),
+                lc,
             );
             if let Some(c) = gate.control {
                 control_dot(
                     painter,
                     Pos2::new(cx, origin.y + model::wire_y(c) as f32),
-                    a(GATE_COLOR),
+                    lc,
                 );
             }
             let ty = origin.y + model::wire_y(gate.target.unwrap_or(gate.wire)) as f32;
-            target_cross(painter, Pos2::new(cx, ty), a(GATE_COLOR));
+            target_cross(painter, Pos2::new(cx, ty), lc);
         }
         GateKind::Measure => {
             let cy = origin.y + model::wire_y(gate.wire) as f32;
@@ -123,10 +117,10 @@ pub fn paint_gate(
             painter.rect_stroke(
                 r,
                 CornerRadius::same(6),
-                stroke(a(GATE_COLOR), 2.0),
+                stroke(lc, 2.0),
                 StrokeKind::Inside,
             );
-            measure_symbol(painter, Pos2::new(cx, cy), a(GATE_COLOR));
+            measure_symbol(painter, Pos2::new(cx, cy), lc);
         }
         GateKind::Custom => {
             let r = gate_rect(origin, gate);
@@ -151,7 +145,7 @@ pub fn paint_gate(
             let y2 = origin.y + model::wire_y(span.below) as f32 + size / 2.0;
             painter.add(Shape::dashed_line(
                 &[Pos2::new(cx, y1), Pos2::new(cx, y2)],
-                stroke(a(GATE_STROKE), 2.0),
+                stroke(lc, 2.0),
                 6.0,
                 4.0,
             ));
@@ -223,23 +217,23 @@ pub fn paint_icon(
             let bottom = rect.bottom() - 8.0;
             painter.line_segment(
                 [Pos2::new(c.x, top), Pos2::new(c.x, bottom)],
-                stroke(GATE_COLOR, 2.0),
+                stroke(label_color, 2.0),
             );
-            control_dot(painter, Pos2::new(c.x, top), GATE_COLOR);
+            control_dot(painter, Pos2::new(c.x, top), label_color);
             if n == 3 {
-                control_dot(painter, Pos2::new(c.x, c.y), GATE_COLOR);
+                control_dot(painter, Pos2::new(c.x, c.y), label_color);
             }
-            target_cross(painter, Pos2::new(c.x, bottom), GATE_COLOR);
+            target_cross(painter, Pos2::new(c.x, bottom), label_color);
         }
         GateKind::Measure => {
             let r = Rect::from_center_size(c, egui::vec2(40.0, 40.0));
             painter.rect_stroke(
                 r,
                 CornerRadius::same(6),
-                stroke(GATE_COLOR, 2.0),
+                stroke(label_color, 2.0),
                 StrokeKind::Inside,
             );
-            measure_symbol(painter, c, GATE_COLOR);
+            measure_symbol(painter, c, label_color);
         }
         GateKind::Barrier => {
             painter.add(Shape::dashed_line(
@@ -247,7 +241,7 @@ pub fn paint_icon(
                     Pos2::new(c.x, rect.top() + 4.0),
                     Pos2::new(c.x, rect.bottom() - 4.0),
                 ],
-                stroke(GATE_STROKE, 2.0),
+                stroke(label_color, 2.0),
                 6.0,
                 4.0,
             ));

@@ -722,10 +722,10 @@ impl eframe::App for QcApp {
                     self.operations_panel(ui);
                 });
             });
+        self.status_bar(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             canvas::show(self, ui);
         });
-        self.status_bar(ctx);
         self.settings_window(ctx);
         self.editor_viewport(ctx);
         if self.editor_open && self.editor_dirty {
