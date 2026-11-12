@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Rewrote QC Schematic in Rust using `egui`/`eframe`. The application is now a
+  two-crate Cargo workspace — `qc-core` (pure domain: model, OpenQASM
+  parse/generate, grammar, geometry, SVG export) and `qc-app` (eframe/egui shell)
+  — and builds to a single native binary with no Node.js or JavaScript runtime.
+- Replaced the Electron/DOM interface with native egui rendering and native
+  open/save dialogs; the OpenQASM editor now opens in its own OS window
+  (**View → Windows → Editor**).
+- The canvas draws gates as vectors instead of loading SVG assets, and exported
+  SVGs are generated in memory.
+- The activity log now writes to the platform log directory (Windows
+  `%LOCALAPPDATA%\qc-schematic\logs`, macOS `~/Library/Logs/qc-schematic`, Linux
+  `~/.local/state/qc-schematic`), still overridable via `QC_SCHEMATIC_LOG_DIR`.
+
+### Added
+
+- Property-based tests (`proptest`) for OpenQASM parse/generate round-tripping.
+
+### Removed
+
+- Removed the ClojureScript/Electron implementation and its tooling: the
+  `src/**/*.cljs` sources, `main.cjs`, `preload.cjs`, `logger.cjs`, `index.html`,
+  `styles.css`, shadow-cljs and npm build/packaging scripts, and the jsdom and
+  Electron system-test harnesses.
+
+## [0.1.1-alpha] - 2026-11-01
+
 ### Added
 
 - Rotating activity log for the main process: application version, window
@@ -63,5 +91,6 @@ a two-way OpenQASM 3 editor.
 - CX control/target placement is now correct when the control sits on the
   second-to-last wire.
 
-[Unreleased]: https://github.com/sebastianardelean/qc-schematic/compare/0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/sebastianardelean/qc-schematic/compare/0.1.1-alpha...HEAD
+[0.1.1-alpha]: https://github.com/sebastianardelean/qc-schematic/compare/0.1.0-alpha...0.1.1-alpha
 [0.1.0-alpha]: https://github.com/sebastianardelean/qc-schematic/releases/tag/0.1.0-alpha

@@ -1,8 +1,14 @@
 # QC Schematic
 
-A desktop editor for quantum circuits. Build a circuit by dragging gates onto
-qubit wires, or by writing OpenQASM 3 directly — the canvas and the code stay in
-sync, so you can work whichever way you prefer.
+A native desktop editor for quantum circuits, written in Rust with
+[egui](https://github.com/emilk/egui)/[eframe](https://github.com/emilk/egui/tree/master/crates/eframe).
+Build a circuit by dragging gates onto qubit wires, or by writing OpenQASM 3
+directly — the canvas and the code stay in sync, so you can work whichever way
+you prefer.
+
+QC Schematic is a Rust port of an earlier ClojureScript/Electron application; it
+reproduces that app's behaviour with a single self-contained binary and no
+JavaScript runtime.
 
 > **OpenQASM** is a text format for describing quantum circuits. QC Schematic
 > reads and writes **OpenQASM 3**.
@@ -12,8 +18,7 @@ sync, so you can work whichever way you prefer.
 - **Two-way editing** — drag gates on the canvas and the OpenQASM editor updates
   instantly; type in the editor and the canvas redraws.
 - **Two windows** — the main window holds the operations palette and canvas; the
-  OpenQASM editor opens in its own window from **View → Windows → Editor**. The
-  editor window has no menu bar, keeping the editing surface uncluttered.
+  OpenQASM editor opens in its own OS window from **View → Windows → Editor**.
 - **Gate palette** — H, X, Y, Z, S, T, S†, T†, Rx, Ry, Rz, P (phase), ID, CX
   (control–NOT), CCX (Toffoli), measurement, and barrier, with 1–12 qubits.
 - **Direct manipulation** — drag a gate onto a wire to place it, double-click to
@@ -25,63 +30,51 @@ sync, so you can work whichever way you prefer.
   line.
 - **Live validation** — line numbers and an OpenQASM 3 grammar check flag syntax
   errors as you type.
+- **Undo / redo** — every canvas edit is reversible.
 - **File operations** — New, Open, Save (`Ctrl/Cmd+S`), Save As, and SVG export.
 - **Autosave snapshots** — periodic snapshots are written next to a file you have
   already saved, and cleaned up automatically when you save again.
-- **Dark mode** — configurable under Preferences → Settings.
-- **Activity log** — the main process writes a rotating log file (kept to 5 MB)
-  for troubleshooting.
+- **Dark mode** — configurable under **Preferences → Settings**.
+- **Activity log** — a rotating log file (kept to 5 MB plus one backup) for
+  troubleshooting.
 
 ## Prerequisites
 
-QC Schematic is an [Electron](https://www.electronjs.org/) app compiled from
-[ClojureScript](https://clojurescript.org/) with
-[shadow-cljs](https://github.com/thheller/shadow-cljs). Install:
+QC Schematic is a Rust workspace and requires only a Rust toolchain:
 
-- **Node.js** 20 or newer (with npm)
-- A **Java Development Kit (JDK)** 8 or newer — shadow-cljs runs on the JVM
+- **Rust** 1.91 or newer (the `stable-x86_64-pc-windows-msvc` toolchain, or the
+  stable toolchain for your platform) with `cargo`.
 
-Verify both are on your `PATH`:
+Verify it is on your `PATH`:
 
 ```console
-$ node --version
-v20.11.0
-$ java -version
-openjdk version "17.0.10" 2024-01-16
+$ rustc --version
+rustc 1.91.1 (ed61e7d7e 2025-11-07)
+$ cargo --version
+cargo 1.91.1
 ```
+
+On Linux you also need the usual windowing/OpenGL development packages (for
+example `libx11`, `libxkbcommon`, and a GPU driver exposing OpenGL/EGL).
 
 ## Getting started
 
-Install dependencies, compile the renderer, and launch the app:
+Build and launch the application:
 
 ```console
-$ npm install
-$ npm run build:cljs
-$ npm start
+$ cargo run -p qc-app
 ```
 
 The QC Schematic window opens with a 4-qubit circuit. Drag a gate from the
 **Operations** palette on the left onto a wire, then open the editor window from
 **View → Windows → Editor** to see the OpenQASM update.
 
-> `npm start` runs Electron against the compiled bundle in `public/js`. Run
-> `npm run build:cljs` at least once before the first `npm start`, or use
-> `npm run watch:cljs` (below) so the bundle is always current.
-
-### Develop with automatic rebuilds
-
-Run a ClojureScript watcher in one terminal and Electron in another:
+To produce an optimized binary:
 
 ```console
-$ npm run watch:cljs
+$ cargo build --release
+$ ./target/release/qc-schematic
 ```
-
-```console
-$ npm start
-```
-
-Changes to files under `src/` recompile automatically; reload the window to see
-them.
 
 ## Using the app
 
@@ -91,6 +84,9 @@ them.
 2. Drag a gate from the palette onto a wire. A preview shows where it will land.
 3. Double-click a gate to remove it.
 4. For a CX or CCX gate, drag the circle on the target wire to move the target.
+
+The canvas scrolls when a circuit is larger than the window; the horizontal and
+vertical scrollbars are always visible.
 
 ### Edit the OpenQASM
 
@@ -138,122 +134,123 @@ classical wire, connected to the measurement by a dotted line.
 Use the **File** menu (or the shortcuts below). Saving a file the first time opens
 a native dialog; later saves overwrite it. While a saved file is open, QC
 Schematic writes an autosave snapshot beside it on the interval set under
-Preferences → Settings, and removes the snapshot on the next save.
+**Preferences → Settings**, and removes the snapshot on the next save.
 
 | Action          | Shortcut              |
 | --------------- | --------------------- |
-| New window      | `Ctrl/Cmd+N`          |
+| New             | `Ctrl/Cmd+N`          |
 | Open…           | `Ctrl/Cmd+O`          |
 | Save            | `Ctrl/Cmd+S`          |
 | Save As…        | `Ctrl/Cmd+Shift+S`    |
 | Export SVG…     | `Ctrl/Cmd+Shift+E`    |
 | Settings…       | `Ctrl/Cmd+,`          |
+| Undo            | `Ctrl/Cmd+Z`          |
+| Redo            | `Ctrl/Cmd+Shift+Z`    |
 
 The **Edit** menu (Undo, Redo, Cut, Copy, Paste, Paste and Match Style, Delete,
 Select All) operates on the focused editor.
 
 ### Logs
 
-The main process writes a plain-text activity log to the platform log directory
-(`app.getPath("logs")`), in a file named `qc-schematic.log`. It records the
-application version, window lifecycle, file operations, and unexpected failures
-(uncaught exceptions, unhandled rejections, and crashed renderer or child
-processes). When the file reaches 5 MB it is rotated to `qc-schematic.log.1`, and
-the previous backup is replaced, so only 5 MB plus one generation is kept.
+The application writes a plain-text activity log to the platform log directory:
+
+- **Windows:** `%LOCALAPPDATA%\qc-schematic\logs`
+- **macOS:** `~/Library/Logs/qc-schematic`
+- **Linux:** `~/.local/state/qc-schematic`
+
+The file is named `qc-schematic.log`. It records window lifecycle, file
+operations, and unexpected failures. When the file reaches 5 MB it is rotated to
+`qc-schematic.log.1`, and the previous backup is replaced, so only 5 MB plus one
+generation is kept.
 
 To redirect the log elsewhere (for example when running tests), set the
 `QC_SCHEMATIC_LOG_DIR` environment variable to a directory.
 
 ## Testing
 
-Run the unit tests:
+Run the workspace test suite:
 
 ```console
-$ npm test
+$ cargo test --workspace
 ```
 
-Run the integration tests (jsdom-based, exercising the renderer through its IPC
-boundaries):
+The suite is split across the two crates: `qc-core` tests cover parsing,
+generation, geometry, and SVG export (including property-based tests via
+[`proptest`](https://docs.rs/proptest)), and `qc-app` tests cover status
+validation and the rotating logger. Before submitting changes, also run:
 
 ```console
-$ npm run test:integration
-```
-
-Run the log-file unit tests (plain Node, checking formatting and rotation):
-
-```console
-$ npm run test:logger
-```
-
-Run the end-to-end (system) tests. These boot the real Electron application and
-drive it like a user; they require a headless-capable environment:
-
-```console
-$ npm run test:system
-```
-
-Every command prints a pass/fail summary and exits non-zero if anything fails. Run
-them all together with:
-
-```console
-$ npm run test:all
-```
-
-### Coverage
-
-Generate an LCOV report and a per-file summary for `src/app/**`:
-
-```console
-$ npm run coverage
-```
-
-The command fails if line coverage drops below the threshold (default 50%). Override
-it with the `COVERAGE_THRESHOLD` environment variable:
-
-```console
-$ $env:COVERAGE_THRESHOLD=80; npm run coverage   # PowerShell
-$ COVERAGE_THRESHOLD=80 npm run coverage         # bash
+$ cargo fmt --all -- --check
+$ cargo clippy --workspace --all-targets
 ```
 
 ## Packaging
 
-Build an installer for your current platform:
+Produce an optimized binary for your current platform:
 
 ```console
-$ npm run dist
+$ cargo build --release
 ```
 
-Or target a specific platform:
-
-```console
-$ npm run dist:win     # Windows NSIS installer
-$ npm run dist:linux   # Linux AppImage and .deb
-$ npm run dist:mac     # macOS DMG
-```
-
-Artifacts are written to `dist/`. To produce an unpacked build for quick
-inspection, use `npm run pack`.
+The executable is written to `target/release/qc-schematic` (`.exe` on Windows).
+The release profile enables thin LTO.
 
 ## Project structure
 
 ```
-src/app/
-  core.cljs        Entry point for the main window; boots the UI
-  editor.cljs      OpenQASM editor window (textarea, line numbers, validation)
-  editor/core.cljs Entry point for the editor window
-  ui.cljs          DOM rendering and interaction (palette, canvas, settings)
-  model.cljs       Gate data, geometry, and application state
-  qasm.cljs        OpenQASM 3 parse and generate
-  grammar.cljs     OpenQASM 3 grammar validation
-  export.cljs      SVG rendering
-  io.cljs          Electron IPC wiring
-  dom.cljs         Small DOM helpers and dark-mode preference
-main.cjs         Electron main process: windows, menus, file dialogs, snapshots
-preload.cjs      Context-isolated bridge between the renderer and main process
-logger.cjs       Rotating file logger used by the main process
-test/app/        Unit and integration specs
-test/system/     End-to-end Electron test and logger unit tests
+crates/
+  qc-core/          Pure domain crate: no UI, no I/O
+    src/model.rs      Gate types, geometry, circuit state, palette
+    src/qasm.rs       OpenQASM 3 parse and generate
+    src/grammar.rs    OpenQASM 3 grammar validation
+    src/export.rs     SVG rendering
+    src/lib.rs        Public API surface
+  qc-app/           eframe/egui application crate
+    src/main.rs       Entry point (run_native)
+    src/app.rs        Application state, menus, shortcuts, settings, editor viewport
+    src/canvas.rs     Canvas rendering, hit-testing, drag-and-drop
+    src/editor.rs     OpenQASM editor window (textarea, line numbers, validation)
+    src/paint.rs      Gate/icon drawing helpers and colours
+    src/files.rs      Native file dialogs and snapshot paths
+    src/logging.rs    Rotating file logger
+static/             Reference SVG art from the original app (not loaded at runtime)
 ```
+
+## Architecture
+
+QC Schematic is a two-crate workspace with a strict, one-way dependency
+direction: `qc-app` depends on `qc-core`, and `qc-core` depends on nothing in the
+workspace.
+
+- **`qc-core` is the domain.** It owns the circuit model, the OpenQASM parser and
+  generator, the grammar checker, the geometry, and SVG export. It performs no
+  I/O and has no UI dependency, so it is deterministic and fully unit-testable.
+  Its public API is the only contract the application relies on — for example
+  `parse_qasm`, `circuit_to_svg`, and the geometry helpers such as `wire_y` and
+  `col_x`.
+- **`qc-app` is the shell.** It owns presentation and all side effects: the
+  egui immediate-mode UI, native dialogs (`rfd`), clipboard access (`arboard`),
+  the file logger, and the second OS window for the editor.
+
+Data flows in two directions. A canvas edit mutates the `State`, regenerates the
+OpenQASM text, and publishes it to the editor; an editor edit is parsed back into
+a `State` and the canvas repaints. The two OS windows share an
+`Arc<Mutex<EditorShared>>` for the text, status, and lifecycle flags, while the
+authoritative circuit `State` lives in the main window.
+
+Key decisions, and why:
+
+- **Immediate-mode GUI (`egui`/`eframe`).** A single-window desktop app with no
+  retained widget tree keeps the state model in one place and avoids a separate
+  UI framework.
+- **The editor is a separate OS window**, not a panel, matching the original
+  app's workflow and keeping the canvas uncluttered.
+- **Vectors, not rasterized SVG.** The 22 static SVGs are not embedded or parsed;
+  gates and the `|0⟩` marker are drawn directly, and exported SVGs are generated
+  in memory. This removes a rendering dependency and keeps output crisp.
+- **Failures degrade gracefully.** Invalid OpenQASM is rejected and the last good
+  circuit is retained; log writes never panic; file errors surface in the status
+  bar rather than aborting.
 
 ## OpenQASM support
 
