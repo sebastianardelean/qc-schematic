@@ -1,0 +1,11 @@
+[package]
+name = "qc-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+regex.workspace = true
+
+[dev-dependencies]
+proptest = "1.6"
